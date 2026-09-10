@@ -38,6 +38,7 @@
 //!   - `preview_text_edits(input_path, fingerprint, page_index, edits) -> TextPreviewDto`
 //!   - `release_text_source(input_path) -> ()`
 
+mod ai;
 mod commands;
 mod error;
 mod models;
@@ -47,6 +48,9 @@ mod utils;
 
 #[cfg(test)]
 mod ocr_langs_tests;
+
+#[cfg(test)]
+mod ai_tests;
 
 use models::JobRegistry;
 use std::sync::Mutex;
