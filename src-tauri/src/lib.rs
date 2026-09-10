@@ -32,6 +32,7 @@
 //! Jobs (`commands::jobs`):
 //!   - `cancel_job(registry, job_id: String) -> Result<(), AppError>`
 
+mod ai;
 mod commands;
 mod error;
 mod models;
@@ -41,6 +42,9 @@ mod utils;
 
 #[cfg(test)]
 mod ocr_langs_tests;
+
+#[cfg(test)]
+mod ai_tests;
 
 use models::JobRegistry;
 use std::sync::Mutex;
