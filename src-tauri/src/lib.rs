@@ -50,6 +50,9 @@ mod utils;
 mod ocr_langs_tests;
 
 #[cfg(test)]
+mod ai_store_tests;
+
+#[cfg(test)]
 mod ai_tests;
 
 use models::JobRegistry;
