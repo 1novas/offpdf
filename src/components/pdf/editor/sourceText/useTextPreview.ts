@@ -19,6 +19,8 @@ import { toAppError, type AppError, type TextEditIn, type TextPreview } from "@/
 import { lruGet, lruPut } from "./usePageText";
 
 export const PREVIEW_CACHE_PAGES = 8;
+/** Decoded preview PDFs retained across undo/redo. */
+export const PREVIEW_CACHE_BYTES = 64 * 1024 * 1024;
 
 export type TextPreviewStatus = "idle" | "pending" | "ready" | "unavailable" | "error";
 
@@ -75,7 +77,23 @@ function unexpectedAnswer(): AppError {
 }
 
 function toEntry(preview: TextPreview): Entry {
-  return { preview, bytes: preview.pagePdf ? base64ToBytes(preview.pagePdf) : null };
+  const bytes = preview.pagePdf ? base64ToBytes(preview.pagePdf) : null;
+  // Keeping both forms costs roughly 2.3x the PDF size. The UI only needs the
+  // decoded bytes after this point; request() still returns the original DTO.
+  return { preview: { ...preview, pagePdf: null }, bytes };
+}
+
+function putEntry(cache: Map<string, Entry>, key: string, entry: Entry): void {
+  lruPut(cache, key, entry, PREVIEW_CACHE_PAGES);
+  let bytes = 0;
+  for (const value of cache.values()) bytes += value.bytes?.byteLength ?? 0;
+  while (bytes > PREVIEW_CACHE_BYTES && cache.size > 1) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    const removed = cache.get(oldest);
+    cache.delete(oldest);
+    bytes -= removed?.bytes?.byteLength ?? 0;
+  }
 }
 
 const statusOf = (entry: Entry): TextPreviewStatus => (entry.bytes ? "ready" : "unavailable");
@@ -127,7 +145,7 @@ export function useTextPreview({ path, fingerprint, sourcePageIndex, objects }: 
           return;
         }
         const entry = toEntry(preview);
-        lruPut(cache.current, key, entry, PREVIEW_CACHE_PAGES);
+        putEntry(cache.current, key, entry);
         setSnap({ base, owner, key, status: statusOf(entry), entry, shown: entry.bytes, error: null });
       },
       (e: unknown) => {
@@ -155,7 +173,7 @@ export function useTextPreview({ path, fingerprint, sourcePageIndex, objects }: 
     if (!pageBase || !isPreview(preview)) return;
     const seededKey = `${pageBase}\u0000${sig}`;
     const entry = toEntry(preview);
-    lruPut(cache.current, seededKey, entry, PREVIEW_CACHE_PAGES);
+    putEntry(cache.current, seededKey, entry);
     if (seededKey === keyRef.current) {
       generation.current += 1;
       setSnap({ base: pageBase, owner: ownerRef.current, key: seededKey, status: statusOf(entry), entry, shown: entry.bytes, error: null });

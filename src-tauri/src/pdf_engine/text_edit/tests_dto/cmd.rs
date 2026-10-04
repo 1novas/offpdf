@@ -43,7 +43,7 @@ fn cmd_01_open_refusals_and_the_synchronous_page_map_check() {
     assert!(info.warnings.is_empty());
     assert_eq!(
         info.fingerprint.len(),
-        16 + 1 + format!("{:x}", std::fs::metadata(&ok).expect("meta").len()).len()
+        64 + 1 + format!("{:x}", std::fs::metadata(&ok).expect("meta").len()).len()
     );
     let cases = [
         ("enc.pdf", fx::encrypted(&t.engines), "ENCRYPTED"),

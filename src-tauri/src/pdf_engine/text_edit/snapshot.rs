@@ -9,6 +9,7 @@ use crate::pdf_engine::text_edit::engines::QpdfPage;
 use crate::pdf_engine::text_edit::limits;
 use crate::pdf_engine::text_edit::reasons::{self, EditProblem, EditProblemCode, ProblemCtx};
 use lopdf::{Dictionary, Document, Object, ObjectId};
+use sha2::{Digest, Sha256};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -25,31 +26,53 @@ const FNV_PRIME: u64 = 0x0100_0000_01b3;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Fingerprint {
     pub len: u64,
-    pub fnv: u64,
+    pub sha256: [u8; 32],
+}
+
+impl Fingerprint {
+    /// Compact identity embedded in run IDs and source locators. Those IDs are
+    /// always scoped by a full source fingerprint at the API boundary, so a
+    /// 128-bit SHA-256 prefix avoids repeating 64 hex characters per glyph run.
+    pub(crate) fn object_id(self) -> String {
+        let mut out = String::with_capacity(32 + 1 + 16);
+        use std::fmt::Write;
+        for byte in &self.sha256[..16] {
+            let _ = write!(&mut out, "{byte:02x}");
+        }
+        let _ = write!(&mut out, "-{:x}", self.len);
+        out
+    }
 }
 
 impl std::fmt::Display for Fingerprint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:016x}-{:x}", self.fnv, self.len)
+        for byte in self.sha256 {
+            write!(f, "{byte:02x}")?;
+        }
+        write!(f, "-{:x}", self.len)
     }
 }
 
 impl std::str::FromStr for Fingerprint {
     type Err = ();
-    /// Strict inverse of `Display`: 16 lowercase hex digits, `-`, the length in lowercase hex
+    /// Strict inverse of `Display`: 64 lowercase hex digits, `-`, the length in lowercase hex
     /// without leading zeros.
     fn from_str(s: &str) -> Result<Self, ()> {
-        let (fnv, len) = s.split_once('-').ok_or(())?;
+        let (sha256, len) = s.split_once('-').ok_or(())?;
         let lower_hex =
             |t: &str| !t.is_empty() && t.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f'));
-        if fnv.len() != 16 || !lower_hex(fnv) || !lower_hex(len) || len.len() > 16 {
+        if sha256.len() != 64 || !lower_hex(sha256) || !lower_hex(len) || len.len() > 16 {
             return Err(());
         }
         if len.len() > 1 && len.starts_with('0') {
             return Err(());
         }
+        let mut digest = [0u8; 32];
+        for (i, byte) in digest.iter_mut().enumerate() {
+            *byte = u8::from_str_radix(&sha256[i * 2..i * 2 + 2], 16).map_err(|_| ())?;
+        }
         Ok(Fingerprint {
-            fnv: u64::from_str_radix(fnv, 16).map_err(|_| ())?,
+            sha256: digest,
             len: u64::from_str_radix(len, 16).map_err(|_| ())?,
         })
     }
@@ -58,7 +81,7 @@ impl std::str::FromStr for Fingerprint {
 pub struct SourceSnapshot {
     pub path: PathBuf,
     pub bytes: Arc<Vec<u8>>,      // the only read of the file
-    pub fingerprint: Fingerprint, // FNV-1a-64 of `bytes` + len
+    pub fingerprint: Fingerprint, // SHA-256 of `bytes` + len
     pub head_tail: (u64, u64),    // FNV of the first / last HEAD_TAIL_HASH_BYTES
     pub modified: Option<SystemTime>,
     pub doc: Document,        // parsed from `bytes`, never from `path`
@@ -96,6 +119,13 @@ pub(crate) fn fnv1a_extend(mut hash: u64, bytes: &[u8]) -> u64 {
 
 pub(crate) fn fnv1a_u64(bytes: &[u8]) -> u64 {
     fnv1a_extend(FNV_OFFSET, bytes)
+}
+
+pub(crate) fn fingerprint_bytes(bytes: &[u8]) -> Fingerprint {
+    Fingerprint {
+        len: bytes.len() as u64,
+        sha256: Sha256::digest(bytes).into(),
+    }
 }
 
 fn head_tail_hashes(bytes: &[u8]) -> (u64, u64) {
@@ -190,10 +220,7 @@ fn build(
     modified: Option<SystemTime>,
     policy: Policy,
 ) -> Result<SourceSnapshot, AppError> {
-    let fingerprint = Fingerprint {
-        len: bytes.len() as u64,
-        fnv: fnv1a_u64(&bytes),
-    };
+    let fingerprint = fingerprint_bytes(&bytes);
     let head_tail = head_tail_hashes(&bytes);
     preflight::preflight(&bytes)?;
     let doc = guarded_load(path, &bytes)?;

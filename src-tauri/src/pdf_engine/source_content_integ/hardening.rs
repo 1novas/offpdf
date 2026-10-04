@@ -7,7 +7,7 @@ use crate::pdf_engine::source_content::{classify_source_page, SourcePageResult};
 use crate::pdf_engine::text_edit::context::SnapshotContext;
 use crate::pdf_engine::text_edit::reasons::TextReason;
 use crate::pdf_engine::text_edit::runs::build_page_model;
-use crate::pdf_engine::text_edit::snapshot::{fnv1a_u64, read_snapshot, snapshot_from_bytes};
+use crate::pdf_engine::text_edit::snapshot::{fingerprint_bytes, read_snapshot, snapshot_from_bytes};
 use crate::pdf_engine::text_edit::testkit::fonts::{
     add_simple, latin_truetype, Program, SimpleFont,
 };
@@ -298,10 +298,7 @@ fn cls_h11_hardening_fingerprint_matches_parsed_bytes() {
     let bytes = fx::word();
     let p = write(&s, "w.pdf", &bytes);
     let snap = read_snapshot(&p).unwrap();
-    assert_eq!(
-        (snap.fingerprint.len, snap.fingerprint.fnv),
-        (bytes.len() as u64, fnv1a_u64(&bytes))
-    );
+    assert_eq!(snap.fingerprint, fingerprint_bytes(&bytes));
     assert_eq!(
         snap.bytes.as_slice(),
         &bytes[..],
@@ -310,7 +307,7 @@ fn cls_h11_hardening_fingerprint_matches_parsed_bytes() {
     let hits = classify(&p, "CLS-H11");
     assert!(hits
         .iter()
-        .all(|o| o.locator.starts_with(&format!("v2:{}:", snap.fingerprint))));
+        .all(|o| o.locator.starts_with(&format!("v2:{}:", snap.fingerprint.object_id()))));
     assert_eq!(
         resolve_source_locator(&p, &hits[0].locator).unwrap(),
         hits[0]

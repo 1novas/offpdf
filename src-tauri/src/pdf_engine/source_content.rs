@@ -44,7 +44,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Bytes of a locator besides its path: `v2:`, the fingerprint, the page, the kind and the
 /// ordinal with their separators.
-const LOCATOR_FIXED_BYTES: usize = 96;
+const LOCATOR_FIXED_BYTES: usize = 112;
 /// Bytes of one Form in a path (`x{obj}.{gen}>`) and of the span (`:{start}-{end}`).
 const PATH_FORM_BYTES: usize = 18;
 const PATH_SPAN_BYTES: usize = 44;
@@ -353,7 +353,7 @@ fn occurrences(
         });
     }
     items.sort_by_key(|i| i.seq);
-    let fp = ctx.snap.fingerprint;
+    let fp = ctx.snap.fingerprint.object_id();
     Ok(items
         .into_iter()
         .enumerate()
@@ -467,7 +467,7 @@ pub fn resolve_source_locator(
     locator: &str,
 ) -> Result<SourceOccurrence, crate::error::AppError> {
     use crate::pdf_engine::text_edit::runs::build_page_model;
-    use crate::pdf_engine::text_edit::snapshot::{fnv1a_u64, snapshot_from_bytes, Fingerprint};
+    use crate::pdf_engine::text_edit::snapshot::{fingerprint_bytes, snapshot_from_bytes};
     let name = path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -479,11 +479,8 @@ pub fn resolve_source_locator(
     };
     let page: u32 = page.parse().map_err(|_| stale())?;
     let (bytes, modified) = read_once(path)?;
-    let fingerprint = Fingerprint {
-        len: bytes.len() as u64,
-        fnv: fnv1a_u64(&bytes),
-    };
-    if fingerprint.to_string() != fp {
+    let fingerprint = fingerprint_bytes(&bytes);
+    if fingerprint.object_id() != fp {
         return Err(stale());
     }
     let ctx = SnapshotContext::new(snapshot_from_bytes(path, bytes, modified)?);

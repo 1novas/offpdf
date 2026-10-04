@@ -17,7 +17,8 @@ fn run_01_word_per_format_blocks_join() {
     assert_eq!(r.reason, None);
     assert_eq!(r.space_mode, SpaceMode::Glyph);
     assert!(
-        r.id.starts_with(&format!("t1:{}:0:", m.fingerprint)),
+        r.id
+            .starts_with(&format!("t1:{}:0:", m.fingerprint.object_id())),
         "RUN-01 id {}",
         r.id
     );

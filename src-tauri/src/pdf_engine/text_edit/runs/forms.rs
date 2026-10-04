@@ -39,7 +39,7 @@ pub(crate) fn form_lines(
     let order = model.runs.iter().map(|r| r.order + 1).max().unwrap_or(0);
     let line = model.runs.iter().map(|r| r.line + 1).max().unwrap_or(0);
     let none = SurfaceInfo::none();
-    let fp = model.fingerprint.to_string();
+    let fp = model.fingerprint.object_id();
     mem.hold(groups.len().saturating_mul(size_of::<TextRun>()))?;
     let mut lines = Vec::with_capacity(groups.len());
     for g in &groups {
@@ -145,6 +145,10 @@ fn line_id(
         forms.join(">"),
         spans.join(",")
     );
-    mem.unhold(bound.saturating_sub(id.capacity()));
+    if id.capacity() > bound {
+        mem.hold(id.capacity() - bound)?;
+    } else {
+        mem.unhold(bound - id.capacity());
+    }
     Ok(id)
 }

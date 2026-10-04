@@ -327,7 +327,7 @@ fn runs_within(
     mem.scratch(all.len().saturating_mul(RUN_SCRATCH_BYTES))?;
     assemble::mark_duplicates(&mut all);
     assemble::mark_per_glyph(&mut all);
-    let fp = ctx.snap.fingerprint.to_string();
+    let fp = ctx.snap.fingerprint.object_id();
     mem.hold(n.saturating_mul(size_of::<Option<TextReason>>()))?;
     let mut record_reason: Vec<Option<TextReason>> =
         intrinsic.iter().map(|r| r.first().copied()).collect();
@@ -390,7 +390,11 @@ fn run_id(
         )
         .collect();
     let id = format!("t1:{fp}:{page_index}:{}", spans.join(","));
-    mem.unhold(bound.saturating_sub(id.capacity()));
+    if id.capacity() > bound {
+        mem.hold(id.capacity() - bound)?;
+    } else {
+        mem.unhold(bound - id.capacity());
+    }
     Ok(id)
 }
 

@@ -355,9 +355,11 @@ fn eng07_page_map_json_shapes() {
 /// A fingerprint numbered `n` for the file at `p`: its real length (the memo keeps only results
 /// whose input still has the fingerprinted length, review T5 M1) and a made-up hash.
 fn fp_of(p: &Path, n: u64) -> Fingerprint {
+    let mut sha256 = [0u8; 32];
+    sha256[..8].copy_from_slice(&n.to_be_bytes());
     Fingerprint {
         len: std::fs::metadata(p).map_or(0, |m| m.len()),
-        fnv: 0xE7_0000_0000 + n,
+        sha256,
     }
 }
 
@@ -434,10 +436,9 @@ fn eng08b_a_vanished_input_is_never_a_memoised_verdict() {
     );
     // A run whose input no longer has the fingerprinted length is returned but not kept.
     let moved = s.write("b.pdf", &simple_pdf(b"q Q"));
-    let other = Fingerprint {
-        len: key.len + 1,
-        fnv: key.fnv + 1,
-    };
+    let mut other = key;
+    other.len += 1;
+    other.sha256[31] ^= 1;
     let before = runs();
     for _ in 0..2 {
         qpdf_check_memo(&engines, other, &moved, &RunOpts::default()).unwrap();

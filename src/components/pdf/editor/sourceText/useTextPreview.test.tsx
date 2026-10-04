@@ -96,6 +96,7 @@ describe("useTextPreview", () => {
     expect(hook.status).toBe("ready");
     expect(decode(hook.bytes)).toBe("pdf:AAA");
     expect(hook.result?.verdicts[0].ok).toBe(true);
+    expect(hook.result?.pagePdf).toBeNull();
   });
 
   it("pagePdf null ⇒ unavailable, original bytes", async () => {

@@ -4,14 +4,13 @@ use crate::error::AppError;
 use crate::pdf_engine::text_edit::engines::{qpdf_page_map, run_tool, RunOpts};
 use crate::pdf_engine::text_edit::limits;
 use crate::pdf_engine::text_edit::snapshot::{
-    check_page_map, fnv1a_u64, read_snapshot, read_verification_snapshot, snapshot_from_bytes,
-    stat_matches, Fingerprint, SourceSnapshot,
+    check_page_map, fingerprint_bytes, read_snapshot, read_verification_snapshot,
+    snapshot_from_bytes, stat_matches, Fingerprint, SourceSnapshot,
 };
 use crate::pdf_engine::text_edit::testkit::pdf::{simple_pdf, zlib_zero_bomb, Doc, XrefStyle};
 use crate::pdf_engine::text_edit::testkit::{
     child_mode, child_value, engines_or_skip, process_peak, run_child_test, thread_peak, Scratch,
 };
-use crate::pdf_engine::validate_output::content_digest;
 use lopdf::Object;
 use std::ffi::OsString;
 use std::path::Path;
@@ -46,16 +45,8 @@ fn snap01_single_read_and_fingerprint() {
     );
     assert_eq!(
         snap.fingerprint,
-        Fingerprint {
-            len: bytes.len() as u64,
-            fnv: fnv1a_u64(&bytes)
-        },
+        fingerprint_bytes(&bytes),
         "SNAP-01"
-    );
-    assert_eq!(
-        snap.fingerprint.fnv,
-        content_digest(&bytes).hash,
-        "same FNV-1a as validate_output"
     );
     assert_eq!(snap.pages.len(), 1);
     assert_eq!(
@@ -69,20 +60,22 @@ fn snap01_single_read_and_fingerprint() {
         "SNAP-01 strict inverse"
     );
     assert_eq!(
-        Fingerprint { len: 0, fnv: 1 }.to_string(),
-        "0000000000000001-0"
+        Fingerprint { len: 0, sha256: [1; 32] }.to_string(),
+        format!("{}-0", "01".repeat(32))
     );
-    for bad in [
-        "",
-        "0123",
-        "ABCDEF0123456789-1f",
-        "0123456789abcdef-01",
-        "0123456789abcdef-",
-        "0123456789abcdef",
-        "0123456789abcdef-1-2",
-        "0123456789abcdeg-1",
-        " 0123456789abcdef-1",
-    ] {
+    let hash = "0123456789abcdef".repeat(4);
+    let bad = vec![
+        String::new(),
+        "0123".to_string(),
+        format!("{}-1f", hash.to_uppercase()),
+        format!("{hash}-01"),
+        format!("{hash}-"),
+        hash.clone(),
+        format!("{hash}-1-2"),
+        format!("{}g-1", &hash[..63]),
+        format!(" {hash}-1"),
+    ];
+    for bad in bad {
         assert!(
             bad.parse::<Fingerprint>().is_err(),
             "SNAP-01 rejects {bad:?}"
