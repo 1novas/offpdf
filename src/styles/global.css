@@ -460,6 +460,26 @@ button {
   outline: none;
   box-shadow: 0 0 0 3px var(--ring);
 }
+.featured-tool.is-active,
+.tool-card.is-active {
+  border-color: var(--tool-accent);
+  background: color-mix(in srgb, var(--tool-accent) 12%, var(--surface));
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--tool-accent) 38%, transparent),
+    var(--shadow-md);
+  transform: translateY(-1px);
+}
+.featured-tool.is-active .featured-tool__icon,
+.tool-card.is-active .tool-card__icon {
+  background: color-mix(in srgb, var(--tool-accent) 26%, var(--surface));
+}
+[data-theme="dark"] .featured-tool.is-active,
+[data-theme="dark"] .tool-card.is-active {
+  background: color-mix(in srgb, var(--tool-accent) 18%, var(--surface));
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--tool-accent) 55%, transparent),
+    var(--shadow-md);
+}
 .featured-tool--organize,
 .tool-card--organize { --tool-accent: #2563eb; }
 .featured-tool--convert,
