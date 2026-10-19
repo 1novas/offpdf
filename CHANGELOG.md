@@ -4,6 +4,10 @@ All notable project changes should be documented here.
 
 ## Unreleased
 
+### Added
+
+- The desktop home tool search can now be navigated with Arrow Up/Down and opened with Enter while focus stays in the search field.
+
 ## 0.4.0 - 2026-10-05
 
 ### Added
