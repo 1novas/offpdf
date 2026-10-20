@@ -1,0 +1,271 @@
+[
+  {
+    "version": 1,
+    "actions": [
+      { "tool": "merge", "inputs": [1, 2] }
+    ]
+  },
+  {
+    "version": 1,
+    "actions": [
+      {
+        "tool": "split",
+        "inputs": [1],
+        "options": { "mode": "everyN", "everyN": 5 }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "actions": [
+      {
+        "tool": "split",
+        "inputs": [1],
+        "options": {
+          "mode": "ranges",
+          "ranges": [
+            { "start": 1, "end": 2 },
+            { "start": 3, "end": 3 }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "actions": [
+      {
+        "tool": "reorder",
+        "inputs": [1],
+        "options": {
+          "remove": [2, 4],
+          "rotate": [{ "pages": [1, 3], "angle": 90 }]
+        },
+        "outputName": "edited-report.pdf"
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "actions": [
+      {
+        "tool": "reorder",
+        "inputs": [1, 2],
+        "options": { "order": [3, 1, 2] },
+        "outputName": "reordered.pdf"
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "actions": [
+      {
+        "tool": "pageNumbers",
+        "inputs": [1],
+        "options": {
+          "position": "bottom-right",
+          "start": 1,
+          "format": "bates",
+          "prefix": "DAVA",
+          "padWidth": 6
+        },
+        "outputName": "bates.pdf"
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "actions": [
+      {
+        "tool": "watermark",
+        "inputs": [1],
+        "options": { "text": "CONFIDENTIAL", "opacity": 0.25 },
+        "outputName": "watermarked.pdf"
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "actions": [
+      {
+        "tool": "crop",
+        "inputs": [1],
+        "options": { "left": 10, "top": 5, "right": 10, "bottom": 5 }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "actions": [
+      {
+        "tool": "stamp",
+        "inputs": [1],
+        "options": {
+          "text": "APPROVED",
+          "page": 2,
+          "anchor": "bottom-right",
+          "color": "blue",
+          "size": 0.06
+        }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "actions": [
+      {
+        "tool": "compress",
+        "inputs": [1],
+        "options": { "mode": "target", "targetMb": 5 }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "actions": [
+      {
+        "tool": "compress",
+        "inputs": [1, 2],
+        "options": { "mode": "keepText" }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "actions": [
+      {
+        "tool": "images",
+        "inputs": [1],
+        "options": { "format": "jpg", "dpi": 300 }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "actions": [
+      { "tool": "repair", "inputs": [1] }
+    ]
+  },
+  {
+    "version": 1,
+    "actions": [
+      { "tool": "protect", "inputs": [1] }
+    ]
+  },
+  {
+    "version": 1,
+    "actions": [
+      { "tool": "unlock", "inputs": [1] }
+    ]
+  },
+  {
+    "version": 1,
+    "actions": [
+      {
+        "tool": "ocr",
+        "inputs": [1],
+        "options": { "languages": ["eng", "tur", "chi_sim"] }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "actions": [
+      { "tool": "pdfa", "inputs": [1] }
+    ]
+  },
+  {
+    "version": 1,
+    "actions": [
+      {
+        "tool": "pdfToOffice",
+        "inputs": [1],
+        "options": { "format": "docx" },
+        "outputName": "report.docx"
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "actions": [
+      {
+        "tool": "pdfToOffice",
+        "inputs": [1],
+        "options": { "format": "pptx" }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "actions": [
+      {
+        "tool": "textExport",
+        "inputs": [1],
+        "options": { "scope": "all" }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "actions": [
+      {
+        "tool": "textExport",
+        "inputs": [1],
+        "options": { "scope": "range", "from": 2, "to": 4 }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "actions": [
+      {
+        "tool": "nup",
+        "inputs": [1],
+        "options": { "mode": "booklet", "paper": "a4", "orientation": "auto" }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "actions": [
+      {
+        "tool": "poster",
+        "inputs": [1],
+        "options": {
+          "page": 3,
+          "paper": "a3",
+          "orientation": "landscape",
+          "overlapMm": 15,
+          "marks": false
+        }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "actions": [
+      {
+        "tool": "metadata",
+        "inputs": [1],
+        "options": {
+          "clearAll": false,
+          "fields": {
+            "title": "Quarterly report",
+            "author": "Ada Lovelace",
+            "keywords": "report, 2026"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "actions": [
+      {
+        "tool": "metadata",
+        "inputs": [1],
+        "options": { "clearAll": true }
+      }
+    ]
+  }
+]

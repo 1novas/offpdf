@@ -15,6 +15,7 @@ import { getTool } from "@/lib/tools";
 import { toAppError } from "@/lib/types";
 import { estimateRequiredBytes, validateOutputName, joinPath } from "@/lib/validation";
 import { stripExt } from "@/lib/formatBytes";
+import { TOOL_DEFAULTS } from "@/lib/toolDefaults";
 import { useSettingsStore } from "@/state/settingsStore";
 import { useWorkspace } from "@/state/workspaceStore";
 
@@ -46,10 +47,10 @@ export function MetadataPage() {
 
   const lastFolder = useSettingsStore((s) => s.lastOutputFolder);
   const [folder, setFolder] = useState<string | null>(lastFolder);
-  const [name, setName] = useState("metadata.pdf");
+  const [name, setName] = useState(TOOL_DEFAULTS.metadata.outputName);
 
   const [meta, setMeta] = useState<PdfMeta>(EMPTY);
-  const [clearAll, setClearAll] = useState(false);
+  const [clearAll, setClearAll] = useState(TOOL_DEFAULTS.metadata.clearAll);
   const [isLoading, setIsLoading] = useState(false);
 
   const first = files[0];

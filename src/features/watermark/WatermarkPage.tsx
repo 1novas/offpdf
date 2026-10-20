@@ -18,6 +18,7 @@ import { watermarkPdf } from "@/lib/tauriCommands";
 import { getTool } from "@/lib/tools";
 import { estimateRequiredBytes, validateOutputName, joinPath } from "@/lib/validation";
 import { stripExt } from "@/lib/formatBytes";
+import { TOOL_DEFAULTS } from "@/lib/toolDefaults";
 import { useSettingsStore } from "@/state/settingsStore";
 import { useWorkspace } from "@/state/workspaceStore";
 
@@ -32,9 +33,9 @@ export function WatermarkPage() {
 
   const lastFolder = useSettingsStore((s) => s.lastOutputFolder);
   const [folder, setFolder] = useState<string | null>(lastFolder);
-  const [name, setName] = useState("watermarked.pdf");
-  const [text, setText] = useState("DRAFT");
-  const [opacity, setOpacity] = useState("0.3");
+  const [name, setName] = useState(TOOL_DEFAULTS.watermark.outputName);
+  const [text, setText] = useState(TOOL_DEFAULTS.watermark.text);
+  const [opacity, setOpacity] = useState(String(TOOL_DEFAULTS.watermark.opacity));
 
   const first = files[0];
   useEffect(() => {

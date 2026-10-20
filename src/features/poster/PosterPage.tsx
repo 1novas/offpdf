@@ -29,6 +29,7 @@ import {
   type PaperId,
 } from "@/lib/paper";
 import { pdfjsLib, base64ToBytes, PDF_OPTS } from "@/lib/pdfjs";
+import { TOOL_DEFAULTS } from "@/lib/toolDefaults";
 import { useSettingsStore } from "@/state/settingsStore";
 import { useWorkspace } from "@/state/workspaceStore";
 
@@ -50,12 +51,14 @@ export function PosterPage() {
 
   const lastFolder = useSettingsStore((s) => s.lastOutputFolder);
   const [folder, setFolder] = useState<string | null>(lastFolder);
-  const [name, setName] = useState("poster.pdf");
-  const [page, setPage] = useState("1");
-  const [paper, setPaper] = useState<PaperId>("a4");
-  const [orientation, setOrientation] = useState<Orientation>("auto");
-  const [overlapMm, setOverlapMm] = useState("10");
-  const [marks, setMarks] = useState(true);
+  const [name, setName] = useState(TOOL_DEFAULTS.poster.outputName);
+  const [page, setPage] = useState(String(TOOL_DEFAULTS.poster.page));
+  const [paper, setPaper] = useState<PaperId>(TOOL_DEFAULTS.poster.paper);
+  const [orientation, setOrientation] = useState<Orientation>(
+    TOOL_DEFAULTS.poster.orientation,
+  );
+  const [overlapMm, setOverlapMm] = useState(String(TOOL_DEFAULTS.poster.overlapMm));
+  const [marks, setMarks] = useState(TOOL_DEFAULTS.poster.marks);
   const [pageSize, setPageSize] = useState<{ w: number; h: number } | null>(null);
 
   const total = refs.length;
