@@ -18,6 +18,7 @@ import { cropPdf } from "@/lib/tauriCommands";
 import { getTool } from "@/lib/tools";
 import { estimateRequiredBytes, validateOutputName, joinPath } from "@/lib/validation";
 import { stripExt } from "@/lib/formatBytes";
+import { TOOL_DEFAULTS } from "@/lib/toolDefaults";
 import { useSettingsStore } from "@/state/settingsStore";
 import { useWorkspace } from "@/state/workspaceStore";
 
@@ -32,11 +33,11 @@ export function CropPage() {
 
   const lastFolder = useSettingsStore((s) => s.lastOutputFolder);
   const [folder, setFolder] = useState<string | null>(lastFolder);
-  const [name, setName] = useState("cropped.pdf");
-  const [left, setLeft] = useState("5");
-  const [top, setTop] = useState("5");
-  const [right, setRight] = useState("5");
-  const [bottom, setBottom] = useState("5");
+  const [name, setName] = useState(TOOL_DEFAULTS.crop.outputName);
+  const [left, setLeft] = useState(String(TOOL_DEFAULTS.crop.left));
+  const [top, setTop] = useState(String(TOOL_DEFAULTS.crop.top));
+  const [right, setRight] = useState(String(TOOL_DEFAULTS.crop.right));
+  const [bottom, setBottom] = useState(String(TOOL_DEFAULTS.crop.bottom));
 
   const first = files[0];
   useEffect(() => {

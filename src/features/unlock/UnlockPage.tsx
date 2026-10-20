@@ -12,6 +12,7 @@ import { getTool } from "@/lib/tools";
 import { isPdfPath } from "@/lib/fileTypes";
 import { validateOutputName, joinPath } from "@/lib/validation";
 import { basename, stripExt } from "@/lib/formatBytes";
+import { TOOL_DEFAULTS } from "@/lib/toolDefaults";
 import { useSettingsStore } from "@/state/settingsStore";
 
 const tool = getTool("unlock");
@@ -24,7 +25,7 @@ export function UnlockPage() {
 
   const [path, setPath] = useState<string | null>(null);
   const [folder, setFolder] = useState<string | null>(lastFolder);
-  const [name, setName] = useState("unlocked.pdf");
+  const [name, setName] = useState(TOOL_DEFAULTS.unlock.outputName);
   const [pw, setPw] = useState("");
 
   // Encrypted PDFs can't load into the normal workspace, so pick directly.

@@ -4,6 +4,10 @@ All notable project changes should be documented here.
 
 ## Unreleased
 
+### Added
+
+- Added a strict, versioned action-plan schema for the private local assistant. Plans map only to existing PDF tools, use 1-based workspace indexes instead of paths, reuse the manual tools' defaults, reject unknown fields/tools/enums, never accept passwords from the model, and include valid/invalid fixtures plus a documented validation API (issue #89).
+
 ## 0.4.0 - 2026-10-05
 
 ### Added

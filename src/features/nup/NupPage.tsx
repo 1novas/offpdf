@@ -21,18 +21,12 @@ import { estimateRequiredBytes, validateOutputName, joinPath } from "@/lib/valid
 import { stripExt } from "@/lib/formatBytes";
 import { PAPERS, paperPt, type Orientation, type PaperId } from "@/lib/paper";
 import { pdfjsLib, base64ToBytes, PDF_OPTS } from "@/lib/pdfjs";
+import { NUP_MODES, TOOL_DEFAULTS, type NupMode } from "@/lib/toolDefaults";
 import { useSettingsStore } from "@/state/settingsStore";
 import { useWorkspace } from "@/state/workspaceStore";
 
 const tool = getTool("nup");
 
-type NupMode = "2up" | "4up" | "booklet";
-
-const MODE_OPTS = [
-  { value: "2up", label: "2 pages per sheet" },
-  { value: "4up", label: "4 pages per sheet" },
-  { value: "booklet", label: "Booklet (fold & staple)" },
-];
 const PAPER_OPTS = PAPERS.map((p) => ({ value: p.id, label: p.label }));
 const ORIENT_OPTS = [
   { value: "auto", label: "Auto (best fit)" },
@@ -65,10 +59,12 @@ export function NupPage() {
 
   const lastFolder = useSettingsStore((s) => s.lastOutputFolder);
   const [folder, setFolder] = useState<string | null>(lastFolder);
-  const [name, setName] = useState("layout.pdf");
-  const [mode, setMode] = useState<NupMode>("2up");
-  const [paper, setPaper] = useState<PaperId>("a4");
-  const [orientation, setOrientation] = useState<Orientation>("auto");
+  const [name, setName] = useState(TOOL_DEFAULTS.nup.outputName);
+  const [mode, setMode] = useState<NupMode>(TOOL_DEFAULTS.nup.mode);
+  const [paper, setPaper] = useState<PaperId>(TOOL_DEFAULTS.nup.paper);
+  const [orientation, setOrientation] = useState<Orientation>(
+    TOOL_DEFAULTS.nup.orientation,
+  );
   const [pageSize, setPageSize] = useState<{ w: number; h: number } | null>(null);
 
   const first = files[0];
@@ -146,7 +142,12 @@ export function NupPage() {
       <ToolSection label="Layout">
         <div className="col">
           <div className="row">
-            <Select label="Layout" value={mode} onChange={(v) => setMode(v as NupMode)} options={MODE_OPTS} />
+            <Select
+              label="Layout"
+              value={mode}
+              onChange={(v) => setMode(v as NupMode)}
+              options={[...NUP_MODES]}
+            />
             <Select label="Sheet size" value={paper} onChange={(v) => setPaper(v as PaperId)} options={PAPER_OPTS} />
             <Select
               label="Orientation"

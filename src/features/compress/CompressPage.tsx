@@ -20,12 +20,13 @@ import { compressPdf, optimizePdf, getFileInfo } from "@/lib/tauriCommands";
 import { getTool } from "@/lib/tools";
 import { estimateRequiredBytes, validateOutputName, joinPath } from "@/lib/validation";
 import { stripExt, formatBytes } from "@/lib/formatBytes";
+import { COMPRESS_MODES, TOOL_DEFAULTS, type CompressMode } from "@/lib/toolDefaults";
 import { useSettingsStore } from "@/state/settingsStore";
 import { useWorkspace } from "@/state/workspaceStore";
 
 const tool = getTool("compress");
 
-type Mode = "target" | "keepText";
+type Mode = CompressMode;
 
 export function CompressPage() {
   const files = useWorkspace((s) => s.files);
@@ -36,10 +37,10 @@ export function CompressPage() {
 
   const lastFolder = useSettingsStore((s) => s.lastOutputFolder);
   const [folder, setFolder] = useState<string | null>(lastFolder);
-  const [name, setName] = useState("compressed.pdf");
+  const [name, setName] = useState(TOOL_DEFAULTS.compress.outputName);
 
-  const [mode, setMode] = useState<Mode>("target");
-  const [targetMb, setTargetMb] = useState("20");
+  const [mode, setMode] = useState<Mode>(TOOL_DEFAULTS.compress.mode);
+  const [targetMb, setTargetMb] = useState(String(TOOL_DEFAULTS.compress.targetMb));
   // Internal ceilings for the auto algorithm (not shown to the user). High on
   // purpose: a single page with a generous target can use full resolution/quality
   // (tens of MB), while many pages / a tight target auto-drop well below these.
@@ -131,10 +132,7 @@ export function CompressPage() {
 
       <ToolSection label="Reduce size">
         <Tabs
-          tabs={[
-            { id: "target", label: "To target size" },
-            { id: "keepText", label: "Keep text (lossless)" },
-          ]}
+          tabs={COMPRESS_MODES.map((m) => ({ id: m.value, label: m.label }))}
           active={mode}
           onChange={(t) => setMode(t as Mode)}
         />

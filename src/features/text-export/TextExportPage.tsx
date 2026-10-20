@@ -11,25 +11,19 @@ import { useJob, JobStatus } from "@/components/jobs";
 // `exportPdfText` is added by INTEGRATION-utils.md (tauriCommands.ts).
 import { exportPdfText } from "@/lib/tauriCommands";
 import { getTool } from "@/lib/tools";
-import { joinPath } from "@/lib/validation";
+import { joinPath, validateFileName } from "@/lib/validation";
 import { stripExt } from "@/lib/formatBytes";
+import {
+  TEXT_EXPORT_SCOPES,
+  TOOL_DEFAULTS,
+  type TextExportScope,
+} from "@/lib/toolDefaults";
 import { useSettingsStore } from "@/state/settingsStore";
 import { useWorkspace } from "@/state/workspaceStore";
 
 const tool = getTool("textExport");
 
-type Scope = "all" | "range";
-
-/** Like `validateOutputName`, but for .txt output instead of .pdf. */
-function validateTxtName(name: string): { ok: true; value: string } | { ok: false; error: string } {
-  const trimmed = name.trim();
-  if (trimmed.length === 0) return { ok: false, error: "Enter an output file name." };
-  if (/[<>:"/\\|?*]/.test(trimmed)) {
-    return { ok: false, error: 'A file name cannot contain: < > : " / \\ | ? *' };
-  }
-  if (trimmed.length > 200) return { ok: false, error: "That file name is too long." };
-  return { ok: true, value: /\.txt$/i.test(trimmed) ? trimmed : `${trimmed}.txt` };
-}
+type Scope = TextExportScope;
 
 export function TextExportPage() {
   const files = useWorkspace((s) => s.files);
@@ -38,10 +32,10 @@ export function TextExportPage() {
 
   const lastFolder = useSettingsStore((s) => s.lastOutputFolder);
   const [folder, setFolder] = useState<string | null>(lastFolder);
-  const [name, setName] = useState("document.txt");
+  const [name, setName] = useState(TOOL_DEFAULTS.textExport.outputName);
 
-  const [scope, setScope] = useState<Scope>("all");
-  const [from, setFrom] = useState("1");
+  const [scope, setScope] = useState<Scope>(TOOL_DEFAULTS.textExport.scope);
+  const [from, setFrom] = useState(String(TOOL_DEFAULTS.textExport.from));
   const [to, setTo] = useState("");
 
   const first = files[0];
@@ -59,7 +53,7 @@ export function TextExportPage() {
   const start = async () => {
     if (!first) return toast({ title: "Add a PDF first", variant: "error" });
     if (!folder) return toast({ title: "Choose an output folder", variant: "error" });
-    const nameRes = validateTxtName(name);
+    const nameRes = validateFileName(name, ".txt");
     if (!nameRes.ok) return toast({ title: "Invalid file name", description: nameRes.error, variant: "error" });
     const outputPath = joinPath(folder, nameRes.value);
 
@@ -105,10 +99,7 @@ export function TextExportPage() {
 
       <ToolSection label="Pages">
         <Tabs
-          tabs={[
-            { id: "all", label: "Whole document" },
-            { id: "range", label: "Page range" },
-          ]}
+          tabs={TEXT_EXPORT_SCOPES.map((s) => ({ id: s.value, label: s.label }))}
           active={scope}
           onChange={(t) => setScope(t as Scope)}
         />

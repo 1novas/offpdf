@@ -18,29 +18,21 @@ import { stampPdf } from "@/lib/tauriCommands";
 import { getTool } from "@/lib/tools";
 import { estimateRequiredBytes, validateOutputName, joinPath } from "@/lib/validation";
 import { stripExt } from "@/lib/formatBytes";
+import {
+  STAMP_ANCHORS,
+  STAMP_COLORS,
+  STAMP_SIZE_OPTIONS,
+  TOOL_DEFAULTS,
+} from "@/lib/toolDefaults";
 import { useSettingsStore } from "@/state/settingsStore";
 import { useWorkspace } from "@/state/workspaceStore";
 
 const tool = getTool("stamp");
 
-const ANCHORS = [
-  "top-left", "top-center", "top-right",
-  "middle-left", "middle-center", "middle-right",
-  "bottom-left", "bottom-center", "bottom-right",
-];
-
-const COLORS: { label: string; value: [number, number, number] }[] = [
-  { label: "Black", value: [0, 0, 0] },
-  { label: "Red", value: [0.85, 0.12, 0.12] },
-  { label: "Blue", value: [0.1, 0.3, 0.8] },
-  { label: "Gray", value: [0.45, 0.45, 0.45] },
-];
-
-const SIZES = [
-  { value: "0.025", label: "Small" },
-  { value: "0.04", label: "Medium" },
-  { value: "0.06", label: "Large" },
-];
+const DEFAULT_COLOR_INDEX = Math.max(
+  0,
+  STAMP_COLORS.findIndex((color) => color.id === TOOL_DEFAULTS.stamp.color),
+);
 
 export function StampPage() {
   const files = useWorkspace((s) => s.files);
@@ -51,12 +43,12 @@ export function StampPage() {
 
   const lastFolder = useSettingsStore((s) => s.lastOutputFolder);
   const [folder, setFolder] = useState<string | null>(lastFolder);
-  const [name, setName] = useState("stamped.pdf");
-  const [text, setText] = useState("APPROVED");
-  const [anchor, setAnchor] = useState("bottom-right");
-  const [colorIdx, setColorIdx] = useState(1);
-  const [size, setSize] = useState("0.04");
-  const [page, setPage] = useState("1");
+  const [name, setName] = useState(TOOL_DEFAULTS.stamp.outputName);
+  const [text, setText] = useState(TOOL_DEFAULTS.stamp.text);
+  const [anchor, setAnchor] = useState<string>(TOOL_DEFAULTS.stamp.anchor);
+  const [colorIdx, setColorIdx] = useState(DEFAULT_COLOR_INDEX);
+  const [size, setSize] = useState(String(TOOL_DEFAULTS.stamp.size));
+  const [page, setPage] = useState(String(TOOL_DEFAULTS.stamp.page));
 
   const total = refs.length;
   const first = files[0];
@@ -76,10 +68,24 @@ export function StampPage() {
     const outputPath = joinPath(folder, nameRes.value);
     if (!(await disk.ensure(folder, estimateRequiredBytes("optimize", files.map((f) => f.sizeBytes))))) return;
 
-    await job.run((id) => stampPdf(id, outputPath, buildGroups(refs), pageNum, anchor, text, COLORS[colorIdx].value, Number(size)), {
-      tool: "stamp",
-      label: `Stamp page ${pageNum}`,
-    });
+    const color = STAMP_COLORS[colorIdx].rgb;
+    await job.run(
+      (id) =>
+        stampPdf(
+          id,
+          outputPath,
+          buildGroups(refs),
+          pageNum,
+          anchor,
+          text,
+          [color[0], color[1], color[2]],
+          Number(size),
+        ),
+      {
+        tool: "stamp",
+        label: `Stamp page ${pageNum}`,
+      },
+    );
   };
 
   const canStart = refs.length > 0 && !!folder && text.trim().length > 0 && !job.isBusy;
@@ -102,19 +108,19 @@ export function StampPage() {
             <Input label="Page" type="number" min={1} max={total || 1} value={page} onChange={(e) => setPage(e.target.value)} hint={total ? `1–${total}` : undefined} />
           </div>
           <div className="row" style={{ alignItems: "flex-end" }}>
-            <Select label="Size" value={size} onChange={setSize} options={SIZES} />
+            <Select label="Size" value={size} onChange={setSize} options={STAMP_SIZE_OPTIONS} />
             <div className="field">
               <label className="field__label">Color</label>
               <div className="row" style={{ gap: 6 }}>
-                {COLORS.map((c, i) => (
+                {STAMP_COLORS.map((c, i) => (
                   <button
-                    key={c.label}
+                    key={c.id}
                     title={c.label}
                     onClick={() => setColorIdx(i)}
                     style={{
                       width: 26, height: 26, borderRadius: 7, cursor: "pointer",
                       border: i === colorIdx ? "2px solid var(--text)" : "2px solid var(--border)",
-                      background: `rgb(${c.value.map((v) => Math.round(v * 255)).join(",")})`,
+                      background: `rgb(${c.rgb.map((v) => Math.round(v * 255)).join(",")})`,
                     }}
                   />
                 ))}
@@ -124,7 +130,7 @@ export function StampPage() {
           <div className="field">
             <label className="field__label">Position on the page</label>
             <div className="anchor-grid">
-              {ANCHORS.map((a) => (
+              {STAMP_ANCHORS.map((a) => (
                 <button key={a} className={`anchor-cell ${a === anchor ? "is-active" : ""}`} onClick={() => setAnchor(a)} title={a} />
               ))}
             </div>
