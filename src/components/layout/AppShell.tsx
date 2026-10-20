@@ -1,10 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
+import { ShortcutsDialog } from "./ShortcutsDialog";
 import { useToast } from "@/components/ui/Toast";
 import { isTauriRuntime } from "@/lib/tauriEnv";
 import { onOpenedPaths, takeOpenedPaths } from "@/lib/tauriCommands";
 import { useWorkspace, type AddResult } from "@/state/workspaceStore";
+import { detectShortcutPlatform, isShortcutsHelpHotkey } from "@/lib/shortcuts";
 
 function reportIntake(
   toast: (input: {
@@ -35,6 +37,25 @@ function reportIntake(
 
 export function AppShell() {
   const { toast } = useToast();
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const platform = useMemo(
+    () => detectShortcutPlatform(typeof navigator === "undefined" ? undefined : navigator),
+    [],
+  );
+
+  useEffect(() => {
+    if (shortcutsOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      // `?` opens the reference only outside editable controls.
+      if (!isShortcutsHelpHotkey(event, event.target)) return;
+      // Keep the currently open workflow dialog in charge of the keyboard.
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      event.preventDefault();
+      setShortcutsOpen(true);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [shortcutsOpen]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -76,7 +97,7 @@ export function AppShell() {
 
   return (
     <div className="app-shell">
-      <Sidebar />
+      <Sidebar onOpenShortcuts={() => setShortcutsOpen(true)} />
       <div className="main">
         <main className="content">
           <div className="content__inner">
@@ -84,6 +105,11 @@ export function AppShell() {
           </div>
         </main>
       </div>
+      <ShortcutsDialog
+        open={shortcutsOpen}
+        onClose={() => setShortcutsOpen(false)}
+        platform={platform}
+      />
     </div>
   );
 }

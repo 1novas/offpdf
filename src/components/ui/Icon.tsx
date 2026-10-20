@@ -77,7 +77,8 @@ export type IconName =
   | "star"
   | "roundSquare"
   | "hexagon"
-  | "bubble";
+  | "bubble"
+  | "keyboard";
 
 const PATHS: Record<IconName, JSX.Element> = {
   merge: (
@@ -391,6 +392,16 @@ const PATHS: Record<IconName, JSX.Element> = {
   hexagon: <path d="M8 4h8l5 8-5 8H8l-5-8z" />,
   bubble: (
     <path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-5l-3.5 3v-3H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" />
+  ),
+  keyboard: (
+    <>
+      <rect x="2" y="6" width="20" height="12" rx="2" />
+      <path d="M6 10h.01" />
+      <path d="M10 10h.01" />
+      <path d="M14 10h.01" />
+      <path d="M18 10h.01" />
+      <path d="M8 14h8" />
+    </>
   ),
   alertTriangle: (
     <>
