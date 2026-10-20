@@ -83,6 +83,16 @@ describe("validateActionPlan", () => {
       expect(unsupported.issues[0]?.code).toBe("UNSUPPORTED_TOOL");
       expect(unsupported.issues[0]?.message).toBe(UNSUPPORTED_TOOL_REASONS.compare);
     }
+
+    const office = validateActionPlan({
+      version: 1,
+      actions: [{ tool: "officeToPdf", inputs: [1] }],
+    });
+    expect(office.ok).toBe(false);
+    if (!office.ok) {
+      expect(office.issues[0]?.code).toBe("UNSUPPORTED_TOOL");
+      expect(office.issues[0]?.message).toBe(UNSUPPORTED_TOOL_REASONS.officeToPdf);
+    }
   });
 
   it("rejects unknown fields at every level", () => {
@@ -509,7 +519,7 @@ describe("validateActionPlan", () => {
       version: 1,
       actions: [
         {
-          tool: "officeToPdf",
+          tool: "split",
           inputs: Array.from({ length: 51 }, (_, index) => index + 1),
         },
       ],

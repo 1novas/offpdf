@@ -245,15 +245,6 @@
     "version": 1,
     "actions": [
       {
-        "tool": "officeToPdf",
-        "inputs": [1, 2]
-      }
-    ]
-  },
-  {
-    "version": 1,
-    "actions": [
-      {
         "tool": "metadata",
         "inputs": [1],
         "options": {
