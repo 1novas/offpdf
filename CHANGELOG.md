@@ -4,6 +4,14 @@ All notable project changes should be documented here.
 
 ## Unreleased
 
+### Added
+
+- Added an offline keyboard-shortcuts reference, opened from the sidebar or by pressing `?` outside editable fields. Shortcuts are grouped by navigation, workspace, and Edit PDF actions, with platform-specific modifier labels.
+
+### Fixed
+
+- Dialogs now trap keyboard focus, close with Escape, and return focus to the control that opened them.
+
 ## 0.4.0 - 2026-10-05
 
 ### Added
