@@ -78,7 +78,6 @@ export const SUPPORTED_TOOL_IDS = [
   "textExport",
   "nup",
   "poster",
-  "officeToPdf",
   "metadata",
 ] as const satisfies readonly ToolId[];
 
@@ -96,6 +95,7 @@ export const UNSUPPORTED_TOOL_REASONS = {
   extract: 'Use the reorder action with options.order instead.',
   rotate: 'Use the reorder action with options.rotate instead.',
   optimize: 'Use compress with options.mode = "keepText" instead.',
+  officeToPdf: "The PDF workspace does not retain original Office files; use the Office to PDF tool directly.",
 } as const satisfies Partial<Record<ToolId, string>>;
 
 export type UnsupportedToolId = keyof typeof UNSUPPORTED_TOOL_REASONS;
@@ -236,7 +236,6 @@ export interface NormalizedOptionsMap {
   textExport: TextExportOptions;
   nup: NupOptions;
   poster: PosterOptions;
-  officeToPdf: EmptyOptions;
   metadata: MetadataOptions;
 }
 
@@ -1579,12 +1578,6 @@ const ACTION_SPECS: Record<SupportedToolId, ToolSpec> = {
     extensionFor: () => ".pdf",
     defaultOutputName: () => TOOL_DEFAULTS.poster.outputName,
     validateOptions: posterOptions,
-  },
-  officeToPdf: {
-    minInputs: 1,
-    maxInputs: 50,
-    output: "multiple",
-    validateOptions: noOptions,
   },
   metadata: {
     minInputs: 1,

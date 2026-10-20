@@ -79,7 +79,6 @@ constants used by the manual pages.
 | `textExport` | exactly 1 | `scope` = `all`, or `scope` = `range` with `from` (default 1) and required `to` | single TXT, default `document.txt` |
 | `nup` | 1–50 | `mode` = `2up` (`2up`/`4up`/`booklet`), `paper` = `a4`, `orientation` = `auto`. A booklet needs at least 3 pages when the count is known. | single PDF, default `layout.pdf` |
 | `poster` | 1–50 | `page` = 1, `paper` = `a4`, `orientation` = `auto`, `overlapMm` = 10 (0–50), `marks` = `true` | single PDF, default `poster.pdf` |
-| `officeToPdf` | 1–50 | — | multiple PDFs |
 | `metadata` | exactly 1 | `clearAll` = `false`, or `fields` with any of `title`, `author`, `subject`, `keywords`, `creator`, `producer`. Do not combine `clearAll` with `fields`; a plan must change something. | single PDF, default `metadata.pdf` |
 
 ### Deliberately excluded
@@ -93,6 +92,7 @@ These tools exist in the app but cannot be planned safely in v1:
 | `blankPages` | Needs visual review before pages are removed. |
 | `delete`, `extract`, `rotate` | Legacy action ids; use `reorder` with `remove`, `order` or `rotate`. |
 | `optimize` | Legacy action id; use `compress` with `mode: "keepText"`. |
+| `officeToPdf` | Workspace entries are PDFs, not the original Office files required for conversion; use the Office to PDF tool directly. |
 
 ## Validation API
 
