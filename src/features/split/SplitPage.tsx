@@ -17,6 +17,7 @@ import { useJob, JobStatus, useDiskGuard } from "@/components/jobs";
 import { splitPdf } from "@/lib/tauriCommands";
 import { getTool } from "@/lib/tools";
 import { estimateRequiredBytes } from "@/lib/validation";
+import { TOOL_DEFAULTS } from "@/lib/toolDefaults";
 import type { SplitMode } from "@/lib/types";
 import { useSettingsStore } from "@/state/settingsStore";
 import { useWorkspace } from "@/state/workspaceStore";
@@ -60,8 +61,8 @@ export function SplitPage() {
   const lastFolder = useSettingsStore((s) => s.lastOutputFolder);
   const [folder, setFolder] = useState<string | null>(lastFolder);
 
-  const [mode, setMode] = useState<Mode>("everyN");
-  const [n, setN] = useState("10");
+  const [mode, setMode] = useState<Mode>(TOOL_DEFAULTS.split.mode);
+  const [n, setN] = useState(String(TOOL_DEFAULTS.split.everyN));
   const [rangesText, setRangesText] = useState("");
 
   const total = refs.length;

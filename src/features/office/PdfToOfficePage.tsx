@@ -17,6 +17,11 @@ import { useJob, JobStatus, useDiskGuard } from "@/components/jobs";
 import { pdfToOffice, officeAvailable } from "@/lib/tauriCommands";
 import { getTool } from "@/lib/tools";
 import { estimateRequiredBytes } from "@/lib/validation";
+import {
+  PDF_TO_OFFICE_FORMATS,
+  TOOL_DEFAULTS,
+  type PdfToOfficeFormat,
+} from "@/lib/toolDefaults";
 import { useSettingsStore } from "@/state/settingsStore";
 import { useWorkspace } from "@/state/workspaceStore";
 
@@ -33,7 +38,7 @@ export function PdfToOfficePage() {
   const [folder, setFolder] = useState<string | null>(lastFolder);
   // "xlsx" is intentionally not offered: LibreOffice has no PDF import filter
   // for Calc, so PDF → Excel can never succeed.
-  const [format, setFormat] = useState<"docx" | "pptx">("docx");
+  const [format, setFormat] = useState<PdfToOfficeFormat>(TOOL_DEFAULTS.pdfToOffice.format);
   const [available, setAvailable] = useState(true);
 
   useEffect(() => {
@@ -78,11 +83,8 @@ export function PdfToOfficePage() {
         <Select
           label="Format"
           value={format}
-          onChange={(v) => setFormat(v as "docx" | "pptx")}
-          options={[
-            { value: "docx", label: "Word (.docx)" },
-            { value: "pptx", label: "PowerPoint (.pptx)" },
-          ]}
+          onChange={(v) => setFormat(v as PdfToOfficeFormat)}
+          options={[...PDF_TO_OFFICE_FORMATS]}
         />
         <div className="mt">
           <Alert variant="info">
