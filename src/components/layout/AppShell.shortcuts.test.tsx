@@ -65,4 +65,16 @@ describe("AppShell keyboard shortcuts", () => {
     expect(container.querySelector('[role="dialog"]')).toBeNull();
     input.remove();
   });
+
+  it("SHORTCUTS-MODAL: `?` does not open over another dialog", () => {
+    const existingDialog = document.createElement("div");
+    existingDialog.setAttribute("role", "dialog");
+    existingDialog.setAttribute("aria-modal", "true");
+    document.body.appendChild(existingDialog);
+
+    pressOn(existingDialog, "?");
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    existingDialog.remove();
+  });
 });

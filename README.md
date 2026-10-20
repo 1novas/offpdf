@@ -17,6 +17,7 @@
 
 <p align="center">
   <strong><a href="#downloads">View downloads</a></strong>
+  · <a href="https://apps.apple.com/app/id6806690233">Get the iPhone app</a>
   · <a href="https://offpdf.com">Visit offpdf.com</a>
   · <a href="https://github.com/McanKul/offpdf">Star OffPDF on GitHub</a>
   · <a href="./CONTRIBUTING.md">Contribute</a>
@@ -75,10 +76,9 @@ The two flattening options have different scopes:
   page content. When a PDF contains form fields, OffPDF requires form fields to
   be flattened as part of this operation.
 
-Current limits: XFA forms are not supported; only the first PDF's AcroForm can
-be filled when several files are combined; and Edit PDF does not rewrite text
-or images already embedded in a source page. New text and images are added as
-overlays instead.
+Current limits: XFA forms are not supported, and only the first PDF's AcroForm
+can be filled when several files are combined. Editing existing page content
+depends on the PDF's structure; unsupported operations leave it unchanged.
 
 The investigation behind that boundary is recorded in the
 [source-content editing decision](./docs/source-editing-decision.md).
@@ -102,6 +102,17 @@ All published binaries are available on the
 
 See the [code signing policy](./CODE_SIGNING_POLICY.md) for how official release
 artifacts are built, approved, and verified.
+
+## OffPDF on your phone
+
+OffPDF is also [available for iPhone on the App Store](https://apps.apple.com/app/id6806690233).
+Scan, organize, sign, and edit PDFs on your phone; documents are processed on
+the device. The app is free to download, with optional Pro tools available as a
+one-time purchase. [Learn more about the mobile app](https://offpdf.com/mobile).
+
+Android is in development and is not available to download yet. This
+repository contains the open-source desktop app; the mobile app is a separate,
+proprietary codebase.
 
 ## Open With (desktop)
 
@@ -218,4 +229,5 @@ priorities and known platform limitations.
 
 ## License
 
-[MIT](./LICENSE)
+The desktop app in this repository is [MIT-licensed](./LICENSE). The separate
+mobile app is not covered by this repository's license.

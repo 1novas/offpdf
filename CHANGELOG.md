@@ -6,6 +6,7 @@ All notable project changes should be documented here.
 
 ### Added
 
+- The desktop home tool search can now be navigated with Arrow Up/Down and opened with Enter while focus stays in the search field.
 - Added an offline keyboard-shortcuts reference, opened from the sidebar or by pressing `?` outside editable fields. Shortcuts are grouped by navigation, workspace, and Edit PDF actions, with platform-specific modifier labels.
 
 ### Fixed

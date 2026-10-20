@@ -48,6 +48,8 @@ export function AppShell() {
     const onKeyDown = (event: KeyboardEvent) => {
       // `?` opens the reference only outside editable controls.
       if (!isShortcutsHelpHotkey(event, event.target)) return;
+      // Keep the currently open workflow dialog in charge of the keyboard.
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       event.preventDefault();
       setShortcutsOpen(true);
     };
