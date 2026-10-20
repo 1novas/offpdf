@@ -29,10 +29,13 @@ const RESERVED_WINDOWS_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i;
 export type NameValidation = { ok: true; value: string } | { ok: false; error: string };
 
 /**
- * Validate a user-provided output file name (without directory). Ensures it is
- * non-empty, has no path separators or reserved characters, and ends in .pdf.
+ * Validate a user-provided output file name (without directory) for any
+ * extension. This is the shared guard used by the manual tools and by the
+ * assistant action-plan schema, so neither accepts path fragments (absolute
+ * paths, `..`, drive letters, separators) or Windows-reserved names.
  */
-export function validateOutputName(name: string): NameValidation {
+export function validateFileName(name: string, extension: string): NameValidation {
+  const ext = extension.startsWith(".") ? extension : `.${extension}`;
   const trimmed = name.trim();
   if (trimmed.length === 0) {
     return { ok: false, error: "Enter an output file name." };
@@ -46,11 +49,23 @@ export function validateOutputName(name: string): NameValidation {
   if (RESERVED_WINDOWS_NAMES.test(trimmed)) {
     return { ok: false, error: `“${trimmed}” is a reserved name on Windows.` };
   }
-  const withExt = /\.pdf$/i.test(trimmed) ? trimmed : `${trimmed}.pdf`;
+  // Windows silently strips trailing dots/spaces, which can turn a harmless
+  // name into a different one. `.` and `..` are directory references.
+  if (trimmed === "." || trimmed === ".." || /[. ]$/.test(trimmed)) {
+    return { ok: false, error: "A file name cannot end with a dot or space." };
+  }
+  const withExt = trimmed.toLowerCase().endsWith(ext.toLowerCase())
+    ? trimmed
+    : `${trimmed}${ext}`;
   if (withExt.length > 200) {
     return { ok: false, error: "That file name is too long." };
   }
   return { ok: true, value: withExt };
+}
+
+/** Validate a PDF output file name (without directory). */
+export function validateOutputName(name: string): NameValidation {
+  return validateFileName(name, ".pdf");
 }
 
 /** Join a directory and file name with the platform-appropriate separator. */

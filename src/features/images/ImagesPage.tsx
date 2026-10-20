@@ -16,16 +16,16 @@ import { useJob, JobStatus, useDiskGuard } from "@/components/jobs";
 import { pdfToImages } from "@/lib/tauriCommands";
 import { getTool } from "@/lib/tools";
 import { estimateRequiredBytes } from "@/lib/validation";
+import {
+  IMAGE_DPI_OPTIONS,
+  IMAGE_FORMATS,
+  TOOL_DEFAULTS,
+  type ImageFormat,
+} from "@/lib/toolDefaults";
 import { useSettingsStore } from "@/state/settingsStore";
 import { useWorkspace } from "@/state/workspaceStore";
 
 const tool = getTool("images");
-
-const RES = [
-  { value: "96", label: "Screen (96 DPI)" },
-  { value: "150", label: "Print (150 DPI)" },
-  { value: "300", label: "High (300 DPI)" },
-];
 
 export function ImagesPage() {
   const files = useWorkspace((s) => s.files);
@@ -36,8 +36,8 @@ export function ImagesPage() {
 
   const lastFolder = useSettingsStore((s) => s.lastOutputFolder);
   const [folder, setFolder] = useState<string | null>(lastFolder);
-  const [format, setFormat] = useState<"png" | "jpg">("png");
-  const [dpi, setDpi] = useState("150");
+  const [format, setFormat] = useState<ImageFormat>(TOOL_DEFAULTS.images.format);
+  const [dpi, setDpi] = useState(String(TOOL_DEFAULTS.images.dpi));
 
   const start = async () => {
     if (refs.length === 0) return toast({ title: "Add a PDF first", variant: "error" });
@@ -68,13 +68,15 @@ export function ImagesPage() {
           <Select
             label="Format"
             value={format}
-            onChange={(v) => setFormat(v as "png" | "jpg")}
-            options={[
-              { value: "png", label: "PNG (lossless, larger)" },
-              { value: "jpg", label: "JPG (smaller)" },
-            ]}
+            onChange={(v) => setFormat(v as ImageFormat)}
+            options={[...IMAGE_FORMATS]}
           />
-          <Select label="Resolution" value={dpi} onChange={setDpi} options={RES} />
+          <Select
+            label="Resolution"
+            value={dpi}
+            onChange={setDpi}
+            options={[...IMAGE_DPI_OPTIONS]}
+          />
         </div>
       </ToolSection>
 

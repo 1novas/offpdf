@@ -20,6 +20,7 @@ import { getTool } from "@/lib/tools";
 import { toAppError } from "@/lib/types";
 import { estimateRequiredBytes, validateOutputName, joinPath } from "@/lib/validation";
 import { stripExt } from "@/lib/formatBytes";
+import { TOOL_DEFAULTS } from "@/lib/toolDefaults";
 import { useSettingsStore } from "@/state/settingsStore";
 import { useWorkspace } from "@/state/workspaceStore";
 
@@ -34,7 +35,7 @@ export function OcrPage() {
 
   const lastFolder = useSettingsStore((s) => s.lastOutputFolder);
   const [folder, setFolder] = useState<string | null>(lastFolder);
-  const [name, setName] = useState("searchable.pdf");
+  const [name, setName] = useState(TOOL_DEFAULTS.ocr.outputName);
   const [available, setAvailable] = useState(true);
   const [installed, setInstalled] = useState<string[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);

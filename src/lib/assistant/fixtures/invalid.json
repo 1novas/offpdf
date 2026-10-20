@@ -1,0 +1,456 @@
+[
+  {
+    "name": "unknown tool",
+    "expectedCode": "UNKNOWN_TOOL",
+    "plan": {
+      "version": 1,
+      "actions": [{ "tool": "shell", "inputs": [1] }]
+    }
+  },
+  {
+    "name": "unsupported tool",
+    "expectedCode": "UNSUPPORTED_TOOL",
+    "plan": {
+      "version": 1,
+      "actions": [{ "tool": "editPdf", "inputs": [1] }]
+    }
+  },
+  {
+    "name": "unknown plan field",
+    "expectedCode": "UNKNOWN_FIELD",
+    "plan": {
+      "version": 1,
+      "actions": [{ "tool": "repair", "inputs": [1] }],
+      "command": "rm -rf /"
+    }
+  },
+  {
+    "name": "unknown action field",
+    "expectedCode": "UNKNOWN_FIELD",
+    "plan": {
+      "version": 1,
+      "actions": [
+        {
+          "tool": "merge",
+          "inputs": [1, 2],
+          "executable": "cmd.exe"
+        }
+      ]
+    }
+  },
+  {
+    "name": "unknown options field",
+    "expectedCode": "UNKNOWN_FIELD",
+    "plan": {
+      "version": 1,
+      "actions": [
+        {
+          "tool": "compress",
+          "inputs": [1],
+          "options": { "mode": "target", "targetMb": 5, "args": ["-9"] }
+        }
+      ]
+    }
+  },
+  {
+    "name": "unknown enum value",
+    "expectedCode": "UNKNOWN_ENUM_VALUE",
+    "plan": {
+      "version": 1,
+      "actions": [
+        {
+          "tool": "pageNumbers",
+          "inputs": [1],
+          "options": { "position": "diagonal" }
+        }
+      ]
+    }
+  },
+  {
+    "name": "password in plan",
+    "expectedCode": "SECRET_IN_PLAN",
+    "plan": {
+      "version": 1,
+      "actions": [
+        {
+          "tool": "protect",
+          "inputs": [1],
+          "options": { "password": "hunter2" }
+        }
+      ]
+    }
+  },
+  {
+    "name": "path traversal output",
+    "expectedCode": "INVALID_OUTPUT_NAME",
+    "plan": {
+      "version": 1,
+      "actions": [
+        {
+          "tool": "crop",
+          "inputs": [1],
+          "outputName": "../escape.pdf"
+        }
+      ]
+    }
+  },
+  {
+    "name": "absolute output path",
+    "expectedCode": "INVALID_OUTPUT_NAME",
+    "plan": {
+      "version": 1,
+      "actions": [
+        {
+          "tool": "watermark",
+          "inputs": [1],
+          "options": { "text": "DRAFT" },
+          "outputName": "C:\\temp\\out.pdf"
+        }
+      ]
+    }
+  },
+  {
+    "name": "trailing dot output",
+    "expectedCode": "INVALID_OUTPUT_NAME",
+    "plan": {
+      "version": 1,
+      "actions": [
+        {
+          "tool": "repair",
+          "inputs": [1],
+          "outputName": "report."
+        }
+      ]
+    }
+  },
+  {
+    "name": "reserved output name",
+    "expectedCode": "INVALID_OUTPUT_NAME",
+    "plan": {
+      "version": 1,
+      "actions": [
+        {
+          "tool": "repair",
+          "inputs": [1],
+          "outputName": "CON"
+        }
+      ]
+    }
+  },
+  {
+    "name": "output name on multi-file action",
+    "expectedCode": "INVALID_VALUE",
+    "plan": {
+      "version": 1,
+      "actions": [
+        {
+          "tool": "split",
+          "inputs": [1],
+          "options": { "mode": "everyN", "everyN": 2 },
+          "outputName": "pieces.pdf"
+        }
+      ]
+    }
+  },
+  {
+    "name": "duplicate output names",
+    "expectedCode": "DUPLICATE_OUTPUT_NAME",
+    "plan": {
+      "version": 1,
+      "actions": [
+        {
+          "tool": "merge",
+          "inputs": [1, 2],
+          "outputName": "same.pdf"
+        },
+        {
+          "tool": "merge",
+          "inputs": [1, 2],
+          "outputName": "SAME.PDF"
+        }
+      ]
+    }
+  },
+  {
+    "name": "unknown version",
+    "expectedCode": "UNKNOWN_VERSION",
+    "plan": { "version": 2, "actions": [{ "tool": "repair", "inputs": [1] }] }
+  },
+  {
+    "name": "empty actions",
+    "expectedCode": "INVALID_VALUE",
+    "plan": { "version": 1, "actions": [] }
+  },
+  {
+    "name": "too many actions",
+    "expectedCode": "TOO_MANY_ACTIONS",
+    "plan": {
+      "version": 1,
+      "actions": [
+        { "tool": "merge", "inputs": [1, 2] },
+        { "tool": "merge", "inputs": [1, 2] },
+        { "tool": "merge", "inputs": [1, 2] },
+        { "tool": "merge", "inputs": [1, 2] },
+        { "tool": "merge", "inputs": [1, 2] },
+        { "tool": "merge", "inputs": [1, 2] },
+        { "tool": "merge", "inputs": [1, 2] },
+        { "tool": "merge", "inputs": [1, 2] },
+        { "tool": "merge", "inputs": [1, 2] }
+      ]
+    }
+  },
+  {
+    "name": "zero input index",
+    "expectedCode": "INVALID_VALUE",
+    "plan": {
+      "version": 1,
+      "actions": [{ "tool": "repair", "inputs": [0] }]
+    }
+  },
+  {
+    "name": "duplicate input index",
+    "expectedCode": "DUPLICATE_INPUT",
+    "plan": {
+      "version": 1,
+      "actions": [{ "tool": "merge", "inputs": [1, 1] }]
+    }
+  },
+  {
+    "name": "merge needs two inputs",
+    "expectedCode": "INVALID_VALUE",
+    "plan": {
+      "version": 1,
+      "actions": [{ "tool": "merge", "inputs": [1] }]
+    }
+  },
+  {
+    "name": "unlock accepts one input",
+    "expectedCode": "TOO_MANY_INPUTS",
+    "plan": {
+      "version": 1,
+      "actions": [{ "tool": "unlock", "inputs": [1, 2] }]
+    }
+  },
+  {
+    "name": "input outside workspace",
+    "expectedCode": "INPUT_OUT_OF_RANGE",
+    "context": { "fileCount": 1 },
+    "plan": {
+      "version": 1,
+      "actions": [{ "tool": "merge", "inputs": [1, 2] }]
+    }
+  },
+  {
+    "name": "reorder order and remove together",
+    "expectedCode": "AMBIGUOUS_OPTIONS",
+    "plan": {
+      "version": 1,
+      "actions": [
+        {
+          "tool": "reorder",
+          "inputs": [1],
+          "options": { "order": [1], "remove": [2] }
+        }
+      ]
+    }
+  },
+  {
+    "name": "reorder no changes",
+    "expectedCode": "INVALID_VALUE",
+    "plan": {
+      "version": 1,
+      "actions": [{ "tool": "reorder", "inputs": [1], "options": {} }]
+    }
+  },
+  {
+    "name": "reorder removes every page",
+    "expectedCode": "INVALID_VALUE",
+    "context": { "pageCounts": [2] },
+    "plan": {
+      "version": 1,
+      "actions": [
+        {
+          "tool": "reorder",
+          "inputs": [1],
+          "options": { "remove": [1, 2] }
+        }
+      ]
+    }
+  },
+  {
+    "name": "overlapping split ranges",
+    "expectedCode": "INVALID_PAGE_RANGE",
+    "plan": {
+      "version": 1,
+      "actions": [
+        {
+          "tool": "split",
+          "inputs": [1],
+          "options": {
+            "mode": "ranges",
+            "ranges": [
+              { "start": 1, "end": 2 },
+              { "start": 2, "end": 3 }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "stamp page outside document",
+    "expectedCode": "PAGE_OUT_OF_RANGE",
+    "context": { "pageCounts": [2] },
+    "plan": {
+      "version": 1,
+      "actions": [
+        {
+          "tool": "stamp",
+          "inputs": [1],
+          "options": { "text": "OK", "page": 5 }
+        }
+      ]
+    }
+  },
+  {
+    "name": "text export reversed range",
+    "expectedCode": "INVALID_PAGE_RANGE",
+    "plan": {
+      "version": 1,
+      "actions": [
+        {
+          "tool": "textExport",
+          "inputs": [1],
+          "options": { "scope": "range", "from": 5, "to": 2 }
+        }
+      ]
+    }
+  },
+  {
+    "name": "text export range options with all scope",
+    "expectedCode": "AMBIGUOUS_OPTIONS",
+    "plan": {
+      "version": 1,
+      "actions": [
+        {
+          "tool": "textExport",
+          "inputs": [1],
+          "options": { "scope": "all", "from": 1 }
+        }
+      ]
+    }
+  },
+  {
+    "name": "metadata no changes",
+    "expectedCode": "INVALID_VALUE",
+    "plan": {
+      "version": 1,
+      "actions": [
+        {
+          "tool": "metadata",
+          "inputs": [1],
+          "options": { "clearAll": false }
+        }
+      ]
+    }
+  },
+  {
+    "name": "metadata clear and fields together",
+    "expectedCode": "AMBIGUOUS_OPTIONS",
+    "plan": {
+      "version": 1,
+      "actions": [
+        {
+          "tool": "metadata",
+          "inputs": [1],
+          "options": { "clearAll": true, "fields": { "title": "x" } }
+        }
+      ]
+    }
+  },
+  {
+    "name": "plain page numbers with bates prefix",
+    "expectedCode": "AMBIGUOUS_OPTIONS",
+    "plan": {
+      "version": 1,
+      "actions": [
+        {
+          "tool": "pageNumbers",
+          "inputs": [1],
+          "options": { "format": "plain", "prefix": "DAVA" }
+        }
+      ]
+    }
+  },
+  {
+    "name": "bad OCR language code",
+    "expectedCode": "INVALID_VALUE",
+    "plan": {
+      "version": 1,
+      "actions": [
+        {
+          "tool": "ocr",
+          "inputs": [1],
+          "options": { "languages": ["english"] }
+        }
+      ]
+    }
+  },
+  {
+    "name": "crop every edge to zero",
+    "expectedCode": "INVALID_VALUE",
+    "plan": {
+      "version": 1,
+      "actions": [
+        {
+          "tool": "crop",
+          "inputs": [1],
+          "options": { "left": 0, "top": 0, "right": 0, "bottom": 0 }
+        }
+      ]
+    }
+  },
+  {
+    "name": "target size with keep text",
+    "expectedCode": "AMBIGUOUS_OPTIONS",
+    "plan": {
+      "version": 1,
+      "actions": [
+        {
+          "tool": "compress",
+          "inputs": [1],
+          "options": { "mode": "keepText", "targetMb": 5 }
+        }
+      ]
+    }
+  },
+  {
+    "name": "booklet too short",
+    "expectedCode": "INVALID_VALUE",
+    "context": { "pageCounts": [2] },
+    "plan": {
+      "version": 1,
+      "actions": [
+        {
+          "tool": "nup",
+          "inputs": [1],
+          "options": { "mode": "booklet" }
+        }
+      ]
+    }
+  },
+  {
+    "name": "output extension does not match tool",
+    "expectedCode": "INVALID_OUTPUT_NAME",
+    "plan": {
+      "version": 1,
+      "actions": [
+        {
+          "tool": "textExport",
+          "inputs": [1],
+          "outputName": "notes.pdf"
+        }
+      ]
+    }
+  }
+]

@@ -19,29 +19,21 @@ import { getTool } from "@/lib/tools";
 import { addPageNumbers } from "@/lib/tauriCommands";
 import { estimateRequiredBytes, validateOutputName, joinPath } from "@/lib/validation";
 import { stripExt } from "@/lib/formatBytes";
+import {
+  PAGE_NUMBER_FORMATS,
+  PAGE_NUMBER_POSITIONS,
+  TOOL_DEFAULTS,
+  type PageNumberFormat,
+  type PageNumberPosition,
+} from "@/lib/toolDefaults";
 import { useSettingsStore } from "@/state/settingsStore";
 import { useWorkspace } from "@/state/workspaceStore";
 
 const tool = getTool("pageNumbers");
 
-const POSITIONS = [
-  { value: "bottom-center", label: "Bottom center" },
-  { value: "bottom-right", label: "Bottom right" },
-  { value: "bottom-left", label: "Bottom left" },
-  { value: "top-center", label: "Top center" },
-  { value: "top-right", label: "Top right" },
-  { value: "top-left", label: "Top left" },
-];
-
 /** Label format: plain numbers, or Bates-style prefix + zero-padded counter,
  * optionally followed by today's date. */
-type FormatMode = "plain" | "bates" | "bates-date";
-
-const FORMATS = [
-  { value: "plain", label: "Plain number (1, 2, 3…)" },
-  { value: "bates", label: "Prefix + padded (DAVA-000123)" },
-  { value: "bates-date", label: "Prefix + padded + date" },
-];
+type FormatMode = PageNumberFormat;
 
 /** Live example of the first page's label, mirroring the backend format. */
 function previewLabel(fm: FormatMode, prefix: string, pad: number, start: number): string {
@@ -61,12 +53,12 @@ export function PageNumbersPage() {
 
   const lastFolder = useSettingsStore((s) => s.lastOutputFolder);
   const [folder, setFolder] = useState<string | null>(lastFolder);
-  const [name, setName] = useState("numbered.pdf");
-  const [position, setPosition] = useState("bottom-center");
-  const [start, setStart] = useState("1");
-  const [formatMode, setFormatMode] = useState<FormatMode>("plain");
-  const [prefix, setPrefix] = useState("");
-  const [padWidth, setPadWidth] = useState("6");
+  const [name, setName] = useState(TOOL_DEFAULTS.pageNumbers.outputName);
+  const [position, setPosition] = useState(TOOL_DEFAULTS.pageNumbers.position);
+  const [start, setStart] = useState(String(TOOL_DEFAULTS.pageNumbers.start));
+  const [formatMode, setFormatMode] = useState<FormatMode>(TOOL_DEFAULTS.pageNumbers.format);
+  const [prefix, setPrefix] = useState(TOOL_DEFAULTS.pageNumbers.prefix);
+  const [padWidth, setPadWidth] = useState(String(TOOL_DEFAULTS.pageNumbers.padWidth));
 
   const first = files[0];
   useEffect(() => {
@@ -121,7 +113,12 @@ export function PageNumbersPage() {
 
       <ToolSection label="Numbering">
         <div className="row">
-          <Select label="Position" value={position} onChange={setPosition} options={POSITIONS} />
+          <Select
+            label="Position"
+            value={position}
+            onChange={(v) => setPosition(v as PageNumberPosition)}
+            options={[...PAGE_NUMBER_POSITIONS]}
+          />
           <Input label="Start at" type="number" value={start} onChange={(e) => setStart(e.target.value)} hint="First page's number." />
         </div>
       </ToolSection>
@@ -132,7 +129,7 @@ export function PageNumbersPage() {
             label="Label format"
             value={formatMode}
             onChange={(v) => setFormatMode(v as FormatMode)}
-            options={FORMATS}
+            options={[...PAGE_NUMBER_FORMATS]}
           />
           {formatMode !== "plain" && (
             <div className="row">

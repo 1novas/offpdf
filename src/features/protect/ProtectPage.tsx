@@ -17,6 +17,7 @@ import { protectPdf } from "@/lib/tauriCommands";
 import { getTool } from "@/lib/tools";
 import { estimateRequiredBytes, validateOutputName, joinPath } from "@/lib/validation";
 import { stripExt } from "@/lib/formatBytes";
+import { TOOL_DEFAULTS } from "@/lib/toolDefaults";
 import { useSettingsStore } from "@/state/settingsStore";
 import { useWorkspace } from "@/state/workspaceStore";
 
@@ -31,7 +32,7 @@ export function ProtectPage() {
 
   const lastFolder = useSettingsStore((s) => s.lastOutputFolder);
   const [folder, setFolder] = useState<string | null>(lastFolder);
-  const [name, setName] = useState("protected.pdf");
+  const [name, setName] = useState(TOOL_DEFAULTS.protect.outputName);
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
 
