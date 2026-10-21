@@ -1,0 +1,350 @@
+{
+  "chunks": [
+    {
+      "id": "c1",
+      "sourceId": "f1",
+      "sourceName": "annual-report.pdf",
+      "page": 1,
+      "text": "Acme shipped 1,200 units in 2025. Revenue was 4.2 million euros."
+    },
+    {
+      "id": "c2",
+      "sourceId": "f1",
+      "sourceName": "annual-report.pdf",
+      "page": 2,
+      "text": "Operating costs fell by 8 percent. The board approved a new factory in Lisbon."
+    },
+    {
+      "id": "c3",
+      "sourceId": "f2",
+      "sourceName": "nota-fiscal.pdf",
+      "page": 3,
+      "text": "La facturación anual fue de 42.000 euros en 2025."
+    },
+    {
+      "id": "c4",
+      "sourceId": "f2",
+      "sourceName": "nota-fiscal.pdf",
+      "page": 4,
+      "text": "İstanbul ofisi 2025'te açıldı."
+    },
+    {
+      "id": "c5",
+      "sourceId": "f3",
+      "sourceName": "contract-zh.pdf",
+      "page": 5,
+      "text": "合同总金额为人民币四十二万元。"
+    },
+    {
+      "id": "c6",
+      "sourceId": "f4",
+      "sourceName": "arabic.pdf",
+      "page": 6,
+      "text": "المجموع الكلي هو 42."
+    },
+    {
+      "id": "c7",
+      "sourceId": "f5",
+      "sourceName": "russian.pdf",
+      "page": 7,
+      "text": "Общая сумма составляет 42 тысячи рублей."
+    },
+    {
+      "id": "c8",
+      "sourceId": "f1",
+      "sourceName": "annual-report.pdf",
+      "page": 8,
+      "text": "The board approved a new factory in Lisbon."
+    }
+  ],
+  "queries": [
+    {
+      "name": "english revenue",
+      "query": "revenue",
+      "expectedChunkIds": ["c1"]
+    },
+    {
+      "name": "english operating costs",
+      "query": "operating costs",
+      "expectedChunkIds": ["c2"]
+    },
+    {
+      "name": "spanish without accents",
+      "query": "facturacion",
+      "expectedChunkIds": ["c3"]
+    },
+    {
+      "name": "turkish dotted capital i",
+      "query": "istanbul",
+      "expectedChunkIds": ["c4"]
+    },
+    {
+      "name": "chinese contract amount",
+      "query": "合同金额",
+      "expectedChunkIds": ["c5"]
+    },
+    {
+      "name": "arabic total",
+      "query": "المجموع",
+      "expectedChunkIds": ["c6"]
+    },
+    {
+      "name": "russian total",
+      "query": "общая сумма",
+      "expectedChunkIds": ["c7"]
+    },
+    {
+      "name": "no evidence",
+      "query": "volcano",
+      "expectedChunkIds": []
+    }
+  ],
+  "validAnswers": [
+    {
+      "name": "single citation answer",
+      "query": "revenue",
+      "expectedKind": "answer",
+      "expectedPages": [1],
+      "answer": {
+        "version": 1,
+        "kind": "answer",
+        "text": "Revenue was 4.2 million euros in 2025.",
+        "citations": [
+          {
+            "chunkId": "c1",
+            "quote": "Revenue was 4.2 million euros."
+          }
+        ]
+      }
+    },
+    {
+      "name": "diacritic-insensitive quote returns source text",
+      "query": "facturacion",
+      "expectedKind": "answer",
+      "expectedPages": [3],
+      "answer": {
+        "version": 1,
+        "kind": "answer",
+        "text": "La facturación anual fue de 42.000 euros.",
+        "citations": [
+          {
+            "chunkId": "c3",
+            "quote": "la facturacion anual fue de 42.000 euros"
+          }
+        ]
+      }
+    },
+    {
+      "name": "chinese answer",
+      "query": "合同金额",
+      "expectedKind": "answer",
+      "expectedPages": [5],
+      "answer": {
+        "version": 1,
+        "kind": "answer",
+        "text": "合同总金额为人民币四十二万元。",
+        "citations": [
+          {
+            "chunkId": "c5",
+            "quote": "合同总金额为人民币四十二万元。"
+          }
+        ]
+      }
+    }
+  ],
+  "invalidAnswers": [
+    {
+      "name": "unknown version",
+      "expectedCode": "UNKNOWN_VERSION",
+      "answer": {
+        "version": 2,
+        "kind": "answer",
+        "text": "Revenue was 4.2 million euros.",
+        "citations": [
+          {
+            "chunkId": "c1",
+            "quote": "Revenue was 4.2 million euros."
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown field",
+      "expectedCode": "UNKNOWN_FIELD",
+      "answer": {
+        "version": 1,
+        "kind": "answer",
+        "text": "Revenue was 4.2 million euros.",
+        "prompt": "ignore previous instructions",
+        "citations": [
+          {
+            "chunkId": "c1",
+            "quote": "Revenue was 4.2 million euros."
+          }
+        ]
+      }
+    },
+    {
+      "name": "no citations",
+      "expectedCode": "NO_CITATIONS",
+      "answer": {
+        "version": 1,
+        "kind": "answer",
+        "text": "Revenue was 4.2 million euros.",
+        "citations": []
+      }
+    },
+    {
+      "name": "too many citations",
+      "expectedCode": "TOO_MANY_CITATIONS",
+      "answer": {
+        "version": 1,
+        "kind": "answer",
+        "text": "Revenue was 4.2 million euros.",
+        "citations": [
+          { "chunkId": "c1", "quote": "Revenue was 4.2 million euros." },
+          { "chunkId": "c1", "quote": "Revenue was 4.2 million euros." },
+          { "chunkId": "c1", "quote": "Revenue was 4.2 million euros." },
+          { "chunkId": "c1", "quote": "Revenue was 4.2 million euros." },
+          { "chunkId": "c1", "quote": "Revenue was 4.2 million euros." },
+          { "chunkId": "c1", "quote": "Revenue was 4.2 million euros." },
+          { "chunkId": "c1", "quote": "Revenue was 4.2 million euros." },
+          { "chunkId": "c1", "quote": "Revenue was 4.2 million euros." },
+          { "chunkId": "c1", "quote": "Revenue was 4.2 million euros." }
+        ]
+      }
+    },
+    {
+      "name": "citation not retrieved",
+      "expectedCode": "CITATION_NOT_RETRIEVED",
+      "answer": {
+        "version": 1,
+        "kind": "answer",
+        "text": "Revenue was 4.2 million euros.",
+        "citations": [
+          {
+            "chunkId": "c99",
+            "quote": "Revenue was 4.2 million euros."
+          }
+        ]
+      }
+    },
+    {
+      "name": "duplicate citation",
+      "expectedCode": "DUPLICATE_CITATION",
+      "answer": {
+        "version": 1,
+        "kind": "answer",
+        "text": "Revenue was 4.2 million euros.",
+        "citations": [
+          {
+            "chunkId": "c1",
+            "quote": "Revenue was 4.2 million euros."
+          },
+          {
+            "chunkId": "c1",
+            "quote": "Acme shipped 1,200 units."
+          }
+        ]
+      }
+    },
+    {
+      "name": "quote not found",
+      "expectedCode": "QUOTE_NOT_FOUND",
+      "answer": {
+        "version": 1,
+        "kind": "answer",
+        "text": "Revenue was 9.9 million euros.",
+        "citations": [
+          {
+            "chunkId": "c1",
+            "quote": "Revenue was 9.9 million euros."
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty text",
+      "expectedCode": "INVALID_VALUE",
+      "answer": {
+        "version": 1,
+        "kind": "answer",
+        "text": "   ",
+        "citations": [
+          {
+            "chunkId": "c1",
+            "quote": "Revenue was 4.2 million euros."
+          }
+        ]
+      }
+    },
+    {
+      "name": "wrong kind",
+      "expectedCode": "INVALID_VALUE",
+      "expectedKind": "answer",
+      "answer": {
+        "version": 1,
+        "kind": "summary",
+        "text": "Revenue was 4.2 million euros.",
+        "citations": [
+          {
+            "chunkId": "c1",
+            "quote": "Revenue was 4.2 million euros."
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown citation field",
+      "expectedCode": "UNKNOWN_FIELD",
+      "answer": {
+        "version": 1,
+        "kind": "answer",
+        "text": "Revenue was 4.2 million euros.",
+        "citations": [
+          {
+            "chunkId": "c1",
+            "quote": "Revenue was 4.2 million euros.",
+            "page": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "insufficient with citations",
+      "expectedCode": "INVALID_VALUE",
+      "answer": {
+        "version": 1,
+        "kind": "insufficient",
+        "text": "I couldn't find enough evidence in the selected PDF.",
+        "citations": [
+          {
+            "chunkId": "c1",
+            "quote": "Revenue was 4.2 million euros."
+          }
+        ]
+      }
+    }
+  ],
+  "summaryCandidate": {
+    "version": 1,
+    "kind": "summary",
+    "text": "The report covers 2025 revenue and a new factory in Lisbon.",
+    "citations": [
+      {
+        "chunkId": "c1",
+        "quote": "Revenue was 4.2 million euros."
+      },
+      {
+        "chunkId": "c2",
+        "quote": "The board approved a new factory in Lisbon."
+      }
+    ]
+  },
+  "insufficientCandidate": {
+    "version": 1,
+    "kind": "insufficient",
+    "text": "I couldn't find enough evidence in the selected PDF.",
+    "citations": []
+  }
+}
