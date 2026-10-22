@@ -43,6 +43,7 @@
 //!   - `ai_preview_model(path) -> Result<ModelPreview, AppError>`
 //!   - `ai_import_model(path, expected_sha256) -> Result<ModelManifest, AppError>`
 //!   - `ai_list_models() -> Result<ModelSetupSnapshot, AppError>`
+//!   - `ai_check_compatibility(requirements) -> Result<CompatibilityReport, AppError>`
 //!   - `ai_load_model(checksum) -> Result<(), AppError>`
 //!   - `ai_unload_model() -> Result<(), AppError>`
 //!   - `ai_cancel() -> Result<(), AppError>`
@@ -59,6 +60,9 @@ mod utils;
 
 #[cfg(test)]
 mod ocr_langs_tests;
+
+#[cfg(test)]
+mod ai_compatibility_tests;
 
 #[cfg(test)]
 mod ai_lifecycle_tests;
@@ -142,6 +146,7 @@ pub fn run() {
             commands::ai::ai_preview_model,
             commands::ai::ai_import_model,
             commands::ai::ai_list_models,
+            commands::ai::ai_check_compatibility,
             commands::ai::ai_load_model,
             commands::ai::ai_unload_model,
             commands::ai::ai_cancel,

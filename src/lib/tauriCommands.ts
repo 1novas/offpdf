@@ -34,6 +34,8 @@ import type {
   ModelPreview,
   ModelRemoveResult,
   ModelSetupSnapshot,
+  CompatibilityReport,
+  ModelRequirements,
 } from "./types";
 import { toAppError } from "./types";
 import type { EditDocument, FormField, FormValue } from "./editor";
@@ -631,6 +633,13 @@ export function aiImportModel(path: string, expectedSha256: string): Promise<Mod
 /** Ready manifests on disk plus Fake status. Does not auto-load. */
 export function aiListModels(): Promise<ModelSetupSnapshot> {
   return invoke<ModelSetupSnapshot>("ai_list_models");
+}
+
+/** Check local hardware and resources against caller-supplied model requirements. */
+export function aiCheckCompatibility(
+  requirements: ModelRequirements,
+): Promise<CompatibilityReport> {
+  return invoke<CompatibilityReport>("ai_check_compatibility", { requirements });
 }
 
 /** Load a ready checksum into the Fake. */
