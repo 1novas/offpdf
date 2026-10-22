@@ -188,8 +188,12 @@ function addTokenTerms(token: string, out: string[]): void {
   if (token.length >= 2 || /\d/u.test(token)) out.push(token);
 }
 
-/** Deterministic, Unicode-aware term extraction used by retrieval. */
-export function tokenizeForSearch(value: string): string[] {
+/**
+ * Deterministic, Unicode-aware term extraction used by retrieval. Document
+ * indexing keeps repeated terms so BM25 can use term frequency; query callers
+ * should use `tokenizeForSearch`, which deduplicates.
+ */
+function tokenizeAll(value: string): string[] {
   const normalized = value.normalize("NFKC").toLowerCase();
   const raw: string[] = [];
   const segmenter = getWordSegmenter();
@@ -208,7 +212,12 @@ export function tokenizeForSearch(value: string): string[] {
     addTokenTerms(foldForSearch(rawToken), terms);
   }
 
-  return Array.from(new Set(terms));
+  return terms;
+}
+
+/** Deterministic, Unicode-aware query terms, deduplicated in query order. */
+export function tokenizeForSearch(value: string): string[] {
+  return Array.from(new Set(tokenizeAll(value)));
 }
 
 function isUsableChunk(chunk: PageChunk): boolean {
@@ -285,7 +294,9 @@ interface IndexedChunk {
 }
 
 function indexChunk(chunk: PageChunk, order: number): IndexedChunk | null {
-  const tokens = tokenizeForSearch(chunk.text);
+  // Keep repeated terms for term-frequency scoring; query terms are deduped
+  // separately in retrieveChunks.
+  const tokens = tokenizeAll(chunk.text);
   if (tokens.length === 0) return null;
 
   const counts = new Map<string, number>();

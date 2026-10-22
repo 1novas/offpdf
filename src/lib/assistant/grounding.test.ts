@@ -77,6 +77,33 @@ describe("retrieveChunks", () => {
     expect(second).toEqual(first);
   });
 
+  it("counts repeated document terms while deduplicating query terms", () => {
+    const once: PageChunk = {
+      ...chunks[0],
+      id: "once",
+      text: "revenue alpha beta gamma delta epsilon",
+    };
+    const repeated: PageChunk = {
+      ...chunks[0],
+      id: "repeated",
+      text: "revenue revenue revenue revenue alpha beta",
+    };
+
+    expect(tokenizeForSearch("revenue revenue")).toEqual(["revenue"]);
+
+    const result = retrieveChunks("revenue", [once, repeated], { topK: 2 });
+    expect(result.chunks.map((chunk) => chunk.id)).toEqual([
+      "repeated",
+      "once",
+    ]);
+
+    const repeatedScore =
+      result.chunks.find((chunk) => chunk.id === "repeated")?.score ?? 0;
+    const onceScore =
+      result.chunks.find((chunk) => chunk.id === "once")?.score ?? 0;
+    expect(repeatedScore).toBeGreaterThan(onceScore);
+  });
+
   it("respects the topK and context budgets", () => {
     const top = retrieveChunks("revenue", chunks, { topK: 1 });
     expect(top.chunks).toHaveLength(1);

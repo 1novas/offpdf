@@ -51,6 +51,8 @@ The assistant never receives a filesystem path.
 `retrieveChunks` is deterministic and bounded:
 
 - BM25 ranking over Unicode word terms.
+- Document indexing preserves repeated terms for term-frequency scoring; query
+  terms are deduplicated.
 - Exact-phrase bonus when the normalized query occurs in a chunk.
 - Stable tie-breaks by input order, then chunk id.
 - Defaults: 6 chunks and 12,000 characters. Caps: 12 chunks and 24,000
