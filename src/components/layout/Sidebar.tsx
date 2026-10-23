@@ -67,6 +67,14 @@ export function Sidebar({ onOpenShortcuts }: { onOpenShortcuts?: () => void }) {
         <NavRow to="/" icon="home" label="All tools" end />
       </nav>
 
+      <nav className="sidebar__nav" aria-label="Assistant">
+        <NavRow
+          to="/assistant"
+          icon="sparkles"
+          label="Private assistant (optional)"
+        />
+      </nav>
+
       <nav className="sidebar__nav" aria-label="Quick tools">
         {QUICK_TOOLS.map((tool) => (
           <NavRow key={tool.id} to={tool.path} icon={tool.icon} label={tool.name} />
