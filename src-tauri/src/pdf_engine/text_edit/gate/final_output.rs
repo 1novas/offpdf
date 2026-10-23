@@ -10,7 +10,7 @@
 
 use super::join::join_is_neutral;
 use super::originals::{find_up_to, holds_original};
-use super::{reachable_forms, PageProof, RecordPrint};
+use super::{is_qpdf_empty_overlay_form, reachable_forms, PageProof, RecordPrint};
 use crate::pdf_engine::text_edit::content::{page_content, qpdf_join, PageContent};
 use crate::pdf_engine::text_edit::context::{resolve, Lookup, Res, SnapshotContext};
 use crate::pdf_engine::text_edit::decode::{decode_stream, DecodeBudget};
@@ -160,6 +160,11 @@ fn wrapper_hit(
                 let is_form =
                     s.dict.get(b"Subtype").ok().and_then(|o| o.as_name().ok()) == Some(b"Form");
                 if !is_form {
+                    continue;
+                }
+                // qpdf can emit an empty, Flate-labelled wrapper for a page with no overlay.
+                // It cannot contain an occurrence; source PDF streams still use strict decoding.
+                if is_qpdf_empty_overlay_form(s) {
                     continue;
                 }
                 let data = decode_stream(s, PAGE_CONTENT_MAX_DECODED, &mut budget)
@@ -328,8 +333,13 @@ pub(super) fn check_page(
             .parts
             .iter()
             .any(|p| originals.iter().any(|o| o.digest == p.digest));
-        let forms = reachable_forms(ctx, page_id, &mut DecodeBudget::new(PAGE_DECODE_BUDGET))
-            .map_err(|e| too_large(&e))?;
+        let forms = reachable_forms(
+            ctx,
+            page_id,
+            &mut DecodeBudget::new(PAGE_DECODE_BUDGET),
+            true,
+        )
+        .map_err(|e| too_large(&e))?;
         for f in &forms {
             found = found || holds_original(f, &originals).map_err(too_large)?;
         }

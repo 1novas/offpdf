@@ -30,9 +30,19 @@ pub struct Fingerprint {
 }
 
 impl Fingerprint {
-    /// Compact identity embedded in run IDs and source locators. Those IDs are
-    /// always scoped by a full source fingerprint at the API boundary, so a
-    /// 128-bit SHA-256 prefix avoids repeating 64 hex characters per glyph run.
+    /// Full SHA-256 digest for source locators, without the file-length suffix used by Display.
+    pub(crate) fn sha256_hex(self) -> String {
+        let mut out = String::with_capacity(64);
+        use std::fmt::Write;
+        for byte in self.sha256 {
+            let _ = write!(&mut out, "{byte:02x}");
+        }
+        out
+    }
+
+    /// Compact identity embedded in run IDs. Those IDs are scoped by a full source
+    /// fingerprint at the API boundary, so a 128-bit prefix avoids repeating 64 hex
+    /// characters per glyph run. Source locators use the full digest instead.
     pub(crate) fn object_id(self) -> String {
         let mut out = String::with_capacity(32 + 1 + 16);
         use std::fmt::Write;

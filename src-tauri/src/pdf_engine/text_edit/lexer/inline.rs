@@ -196,11 +196,9 @@ fn prove_end(
                     let end = start.checked_add(consumed).ok_or(LexError::TooComplex {
                         what: "inline image size",
                     })?;
-                    for candidate in [end.checked_add(4), Some(end)].into_iter().flatten() {
-                        if candidate <= b.len() {
-                            if let Some((e, ei)) = check(candidate) {
-                                return Ok(Some((e, ei, InlineProof::FlateEnd)));
-                            }
+                    if end <= b.len() {
+                        if let Some((e, ei)) = check(end) {
+                            return Ok(Some((e, ei, InlineProof::FlateEnd)));
                         }
                     }
                     Ok(None)

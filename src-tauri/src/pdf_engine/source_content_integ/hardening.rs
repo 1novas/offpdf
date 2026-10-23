@@ -7,7 +7,9 @@ use crate::pdf_engine::source_content::{classify_source_page, SourcePageResult};
 use crate::pdf_engine::text_edit::context::SnapshotContext;
 use crate::pdf_engine::text_edit::reasons::TextReason;
 use crate::pdf_engine::text_edit::runs::build_page_model;
-use crate::pdf_engine::text_edit::snapshot::{fingerprint_bytes, read_snapshot, snapshot_from_bytes};
+use crate::pdf_engine::text_edit::snapshot::{
+    fingerprint_bytes, read_snapshot, snapshot_from_bytes,
+};
 use crate::pdf_engine::text_edit::testkit::fonts::{
     add_simple, latin_truetype, Program, SimpleFont,
 };
@@ -305,9 +307,27 @@ fn cls_h11_hardening_fingerprint_matches_parsed_bytes() {
         "CLS-H11 parsed from the hashed bytes"
     );
     let hits = classify(&p, "CLS-H11");
-    assert!(hits
-        .iter()
-        .all(|o| o.locator.starts_with(&format!("v2:{}:", snap.fingerprint.object_id()))));
+    assert!(hits.iter().all(|o| o
+        .locator
+        .starts_with(&format!("v2:{}:", snap.fingerprint.sha256_hex()))));
+    let locator_fp = hits[0].locator.split(':').nth(1).unwrap();
+    assert_eq!(locator_fp.len(), 64, "CLS-H11 locator has 256 digest bits");
+    assert!(locator_fp
+        .bytes()
+        .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()));
+    assert_eq!(
+        locator_fp,
+        snap.fingerprint.sha256_hex(),
+        "CLS-H11 full SHA-256 locator"
+    );
+    let truncated = hits[0].locator.replace(
+        &snap.fingerprint.sha256_hex(),
+        &snap.fingerprint.object_id(),
+    );
+    assert!(
+        resolve_source_locator(&p, &truncated).is_err(),
+        "CLS-H11 truncated locator is stale"
+    );
     assert_eq!(
         resolve_source_locator(&p, &hits[0].locator).unwrap(),
         hits[0]

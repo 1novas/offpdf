@@ -27,17 +27,12 @@ fs2 = "0.4"
 
 # Read/write PDF page boxes (used for cropping).
 lopdf = "0.34"
+# Bounded Flate decoding and collision-resistant source identity for Edit text.
 flate2 = "1"
 sha2 = "0.10"
 
 # Glyph metrics for the bundled editor font (Noto Sans).
 ttf-parser = "0.25"
-
-# Bounded (capped while inflating) Flate decoding for Edit text. Already compiled in through lopdf.
-flate2 = "1"
-
-# Collision-resistant source identity for Edit text cache keys and stale checks.
-sha2 = "0.10"
 
 # Decode common image formats so uploaded images can be wrapped into a PDF.
 image = { version = "0.25", default-features = false, features = [

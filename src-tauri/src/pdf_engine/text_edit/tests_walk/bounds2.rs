@@ -249,20 +249,10 @@ fn zlib_padded(prefix: &[u8], mib: usize) -> Vec<u8> {
     let zeros = vec![0u8; 1 << 20];
     let mut e = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::best());
     e.write_all(prefix).expect("write");
-    e.write_all(&zeros).expect("write");
-    e.flush().expect("flush");
-    let first = e.get_ref().len();
-    e.write_all(&zeros).expect("write");
-    e.flush().expect("flush");
-    let second = e.get_ref().len();
-    let full = e.finish().expect("finish");
-    let chunk = full[first..second].to_vec();
-    let mut out = full[..second].to_vec();
-    for _ in 2..mib.max(2) {
-        out.extend_from_slice(&chunk);
+    for _ in 0..mib {
+        e.write_all(&zeros).expect("write");
     }
-    out.extend_from_slice(&full[second..]);
-    out
+    e.finish().expect("finish")
 }
 
 #[test]

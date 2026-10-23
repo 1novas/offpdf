@@ -5,6 +5,7 @@
 //! through to lopdf (its outcome there is noted per case).
 
 use super::preflight::{deep, opens, outcome};
+use super::zlib;
 use std::fmt::Write as _;
 
 const OBJECTS: [&str; 3] = [
@@ -88,6 +89,30 @@ fn main_stream(pre: &str, post: &str) -> Vec<u8> {
     let mut f = File::new();
     let x = f.xref_stream(9, pre, &format!("/Root 1 0 R {post}"));
     f.finish(x)
+}
+
+#[test]
+fn snap08h_xref_stream_with_bad_adler_is_refused() {
+    let mut f = File::new();
+    let mut rows = vec![0u8, 0, 0, 0, 0, 0xFF, 0xFF];
+    for off in &f.offs {
+        rows.push(1);
+        rows.extend_from_slice(&u32::try_from(*off).unwrap().to_be_bytes());
+        rows.extend_from_slice(&[0, 0]);
+    }
+    let mut encoded = zlib(&rows);
+    *encoded.last_mut().unwrap() ^= 0xFF;
+    let at = f.out.len();
+    f.out.extend_from_slice(
+        format!(
+            "9 0 obj\n<< /Type /XRef /Size 4 /W [1 4 2] /Root 1 0 R /Filter /FlateDecode /Length {} >>\nstream\n",
+            encoded.len()
+        )
+        .as_bytes(),
+    );
+    f.out.extend_from_slice(&encoded);
+    f.out.extend_from_slice(b"\nendstream\nendobj\n");
+    assert_refused(&f.finish(at), "INVALID_PDF", "xref stream data", "SNAP-08h");
 }
 
 #[test]

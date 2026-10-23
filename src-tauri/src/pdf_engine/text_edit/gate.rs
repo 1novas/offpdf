@@ -41,7 +41,7 @@ use crate::pdf_engine::text_edit::state::StateDigest;
 use crate::pdf_engine::text_edit::verify::walk_and_verify_with;
 use crate::pdf_engine::text_edit::walker::{walk_page, PageWalk, ShowOp, ShowRecord, WalkMode};
 use crate::pdf_engine::validate_output::{content_digest, ContentDigest};
-use lopdf::{Object, ObjectId};
+use lopdf::{Object, ObjectId, Stream};
 use std::collections::{HashSet, VecDeque};
 use std::ffi::OsString;
 use std::io::Read;
@@ -264,11 +264,28 @@ fn check_a0(
     }
 }
 
+/// qpdf's output can contain a zero-byte, Flate-labelled Form for an empty overlay. This
+/// exception is only for Phase B's verification of qpdf output, never for source decoding.
+/// Keep qpdf's six-key shape exact so other malformed Forms cannot bypass Flate checks.
+/// Resources may be nonempty and must still be traversed by B2.
+pub(super) fn is_qpdf_empty_overlay_form(stream: &Stream) -> bool {
+    let dict = &stream.dict;
+    stream.content.is_empty()
+        && dict.len() == 6
+        && matches!(dict.get(b"Type"), Ok(Object::Name(n)) if n == b"XObject")
+        && matches!(dict.get(b"Subtype"), Ok(Object::Name(n)) if n == b"Form")
+        && matches!(dict.get(b"Filter"), Ok(Object::Name(n)) if n == b"FlateDecode")
+        && matches!(dict.get(b"Length"), Ok(Object::Integer(0)))
+        && matches!(dict.get(b"Resources"), Ok(Object::Dictionary(_)))
+        && matches!(dict.get(b"BBox"), Ok(Object::Array(v)) if v.len() == 4)
+}
+
 /// The decoded data of every Form XObject reachable from the page's resources (depth ≤ 8).
 pub(crate) fn reachable_forms(
     ctx: &SnapshotContext,
     page_id: ObjectId,
     budget: &mut DecodeBudget,
+    allow_empty_output_forms: bool,
 ) -> Result<Vec<Vec<u8>>, String> {
     let doc = ctx.doc();
     let root = Res::of_page(doc, page_id).map_err(str::to_string)?;
@@ -296,7 +313,12 @@ pub(crate) fn reachable_forms(
             if !is_form || !seen.insert(id) {
                 continue;
             }
-            let data = decode_stream(s, STREAM_MAX_DECODED, budget).map_err(|e| e.to_string())?;
+            // Only verification of qpdf output accepts its empty overlay Form; sources stay strict.
+            let data = if allow_empty_output_forms && is_qpdf_empty_overlay_form(s) {
+                Vec::new()
+            } else {
+                decode_stream(s, STREAM_MAX_DECODED, budget).map_err(|e| e.to_string())?
+            };
             out.push(data);
             if depth + 1 < FORM_DEPTH_MAX {
                 let sub = match Res::of_form(doc, id, s) {
@@ -325,7 +347,7 @@ fn check_a3(
     let mut problems: Vec<String> = Vec::new();
     let mut budget = DecodeBudget::new(PAGE_DECODE_BUDGET);
     let too_large = |e: &str| a_fail("A3", Some(page), &format!("too large to verify: {e}"));
-    let forms = reachable_forms(ctx, page_id, &mut budget).map_err(|e| too_large(&e))?;
+    let forms = reachable_forms(ctx, page_id, &mut budget, false).map_err(|e| too_large(&e))?;
     let mut attached = content
         .parts
         .iter()

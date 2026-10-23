@@ -160,33 +160,20 @@ fn check_decode_parms(parms: Option<&Object>) -> Result<(), DecodeError> {
     }
 }
 
-/// Splits off and checks the 2-byte zlib header (CM = 8, CINFO ≤ 7, FCHECK, FDICT = 0).
-fn zlib_body(data: &[u8]) -> Result<&[u8], DecodeError> {
-    let (cmf, flg) = match (data.first(), data.get(1)) {
-        (Some(c), Some(f)) => (*c, *f),
-        _ => return Err(DecodeError::Corrupt("truncated flate")),
-    };
-    let check = (u16::from(cmf) * 256 + u16::from(flg)) % 31;
-    if cmf & 0x0F != 8 || cmf >> 4 > 7 || check != 0 || flg & 0x20 != 0 {
-        return Err(DecodeError::Corrupt("bad zlib header"));
-    }
-    Ok(data.get(2..).unwrap_or_default())
-}
-
-/// Raw inflate of `body` in fixed output steps; every produced chunk goes to `sink` only after
+/// Zlib-wrapped inflate in fixed output steps; every produced chunk goes to `sink` only after
 /// the running total was checked against `cap`. Returns (total output, consumed input) at
-/// `StreamEnd`; input ending before it is `Corrupt("truncated flate")`.
+/// `StreamEnd`, after the Adler-32 trailer has been verified. Input ending before it is corrupt.
 fn inflate_run(
-    body: &[u8],
+    data: &[u8],
     cap: usize,
     mut sink: impl FnMut(&[u8]),
 ) -> Result<(usize, usize), DecodeError> {
-    let mut d = Decompress::new(false);
+    let mut d = Decompress::new(true);
     let mut step = vec![0u8; INFLATE_STEP_BYTES];
     loop {
         let in_before = usize::try_from(d.total_in()).map_err(|_| DecodeError::TooLarge)?;
         let out_before = usize::try_from(d.total_out()).map_err(|_| DecodeError::TooLarge)?;
-        let input = body.get(in_before..).unwrap_or_default();
+        let input = data.get(in_before..).unwrap_or_default();
         let status = d
             .decompress(input, &mut step, FlushDecompress::None)
             .map_err(|_| DecodeError::Corrupt("flate data error"))?;
@@ -214,26 +201,21 @@ fn inflate_run(
 
 /// Zlib-wrapped Flate with the output capped at `cap` while inflating. Peak allocation is at
 /// most `cap` + one 64 KiB step: a first pass only measures, the second fills an exact buffer.
-/// The Adler-32 trailer and any trailing bytes are ignored (as pdf.js and qpdf do).
+/// The Adler-32 trailer is verified; unrelated trailing bytes are left to the caller.
 pub fn inflate_capped(data: &[u8], cap: usize) -> Result<Vec<u8>, DecodeError> {
-    if data.is_empty() {
-        return Ok(Vec::new());
-    }
-    let body = zlib_body(data)?;
-    let (len, _) = inflate_run(body, cap, |_| {})?;
+    let (len, _) = inflate_run(data, cap, |_| {})?;
     let mut out = Vec::new();
     out.try_reserve_exact(len)
         .map_err(|_| DecodeError::TooLarge)?;
-    inflate_run(body, len, |chunk| out.extend_from_slice(chunk))?;
+    inflate_run(data, len, |chunk| out.extend_from_slice(chunk))?;
     Ok(out)
 }
 
-/// Number of input bytes (zlib header included, Adler-32 trailer excluded) a capped inflate
+/// Number of input bytes (zlib header and verified Adler-32 trailer included) a capped inflate
 /// consumes before `StreamEnd`. Used to prove the end of a Flate inline image.
 pub fn inflate_end(data: &[u8], cap: usize) -> Result<usize, DecodeError> {
-    let body = zlib_body(data)?;
-    let (_, consumed) = inflate_run(body, cap, |_| {})?;
-    consumed.checked_add(2).ok_or(DecodeError::TooLarge)
+    let (_, consumed) = inflate_run(data, cap, |_| {})?;
+    Ok(consumed)
 }
 
 fn is_pdf_whitespace(b: u8) -> bool {

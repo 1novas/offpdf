@@ -13,7 +13,7 @@ pub fn zlib(data: &[u8]) -> Vec<u8> {
 }
 
 /// A zlib stream that inflates to `mib` MiB of zero bytes, built from one sync-flushed 1 MiB
-/// chunk repeated (≈1 KiB of input per MiB of output). Its Adler-32 is wrong on purpose.
+/// chunk repeated (≈1 KiB of input per MiB of output), with a valid Adler-32 trailer.
 pub fn zlib_zero_bomb(mib: usize) -> Vec<u8> {
     let zeros = vec![0u8; 1 << 20];
     let mut e = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::best());
@@ -30,6 +30,12 @@ pub fn zlib_zero_bomb(mib: usize) -> Vec<u8> {
         out.extend_from_slice(&chunk);
     }
     out.extend_from_slice(&full[second..]);
+    // The repeated DEFLATE chunks change the uncompressed byte count. Keep the zlib trailer
+    // valid so strict decoders can distinguish a size bomb from a corrupt checksum.
+    let count = (mib.max(2) as u64) * (1 << 20);
+    let adler = (((count % 65_521) as u32) << 16) | 1;
+    let trailer = out.len() - 4;
+    out[trailer..].copy_from_slice(&adler.to_be_bytes());
     out
 }
 

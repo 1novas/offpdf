@@ -353,7 +353,7 @@ fn occurrences(
         });
     }
     items.sort_by_key(|i| i.seq);
-    let fp = ctx.snap.fingerprint.object_id();
+    let fp = ctx.snap.fingerprint.sha256_hex();
     Ok(items
         .into_iter()
         .enumerate()
@@ -480,7 +480,7 @@ pub fn resolve_source_locator(
     let page: u32 = page.parse().map_err(|_| stale())?;
     let (bytes, modified) = read_once(path)?;
     let fingerprint = fingerprint_bytes(&bytes);
-    if fingerprint.object_id() != fp {
+    if fingerprint.sha256_hex() != fp {
         return Err(stale());
     }
     let ctx = SnapshotContext::new(snapshot_from_bytes(path, bytes, modified)?);

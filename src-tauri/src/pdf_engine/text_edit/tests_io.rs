@@ -68,8 +68,8 @@ fn dec01_flate_round_trip() {
     let z = zlib(b"abc");
     assert_eq!(
         inflate_end(&z, 100).unwrap(),
-        z.len() - 4,
-        "DEC-01 consumed input excludes the Adler-32"
+        z.len(),
+        "DEC-01 consumed input includes the verified Adler-32"
     );
     assert_eq!(
         inflate_capped(&zlib(&plain), plain.len()).unwrap().len(),
@@ -101,6 +101,11 @@ fn dec02_truncated_flate_is_corrupt() {
 fn dec03_bomb_is_too_large_with_bounded_peak() {
     let bomb = zlib_zero_bomb(1024); // ≈1 MiB in, 1 GiB out
     assert!(bomb.len() < 2 << 20);
+    assert_eq!(
+        inflate_capped(&zlib_zero_bomb(3), 3 << 20).unwrap().len(),
+        3 << 20,
+        "DEC-03 the repeated-chunk fixture has a valid Adler-32 trailer"
+    );
     let cap = 1 << 20;
     let (result, peak) = thread_peak(|| inflate_capped(&bomb, cap));
     assert_eq!(result, Err(DecodeError::TooLarge), "DEC-03");
@@ -122,39 +127,71 @@ fn dec03_bomb_is_too_large_with_bounded_peak() {
 }
 
 #[test]
-fn dec04_bad_adler_after_stream_end_is_ok() {
+fn dec04_bad_adler_is_corrupt_but_unrelated_trailing_bytes_are_allowed() {
     let mut z = zlib(b"BT (x) Tj ET");
+    let mut valid_with_trailing = z.clone();
+    valid_with_trailing.extend_from_slice(b"\r\n trailing garbage");
+    assert_eq!(
+        inflate_capped(&valid_with_trailing, 100).unwrap(),
+        b"BT (x) Tj ET",
+        "DEC-04 unrelated trailing bytes"
+    );
     let n = z.len();
     z[n - 1] ^= 0xFF;
     z.extend_from_slice(b"\r\n trailing garbage");
-    assert_eq!(inflate_capped(&z, 100).unwrap(), b"BT (x) Tj ET", "DEC-04");
+    assert!(
+        matches!(inflate_capped(&z, 100), Err(DecodeError::Corrupt(_))),
+        "DEC-04 bad Adler"
+    );
+    assert!(
+        matches!(
+            decode(&stream(Some(name("FlateDecode")), None, z)),
+            Err(DecodeError::Corrupt(_))
+        ),
+        "DEC-04 filtered content stream"
+    );
+    let valid = zlib(b"BT (x) Tj ET");
+    assert!(
+        matches!(
+            inflate_capped(&valid[..valid.len() - 1], 100),
+            Err(DecodeError::Corrupt(_))
+        ),
+        "DEC-04 missing Adler trailer"
+    );
 }
 
 #[test]
 fn dec05_flate_over_plain_bytes_is_corrupt() {
-    assert_eq!(
-        inflate_capped(b"BT (x) Tj ET", 100),
-        Err(DecodeError::Corrupt("bad zlib header")),
+    assert!(
+        matches!(
+            inflate_capped(b"BT (x) Tj ET", 100),
+            Err(DecodeError::Corrupt(_))
+        ),
         "DEC-05"
     );
     assert_eq!(
         inflate_capped(&[0x78, 0x9C, 0xFF, 0xFF, 0xFF], 100),
         Err(DecodeError::Corrupt("flate data error"))
     );
-    assert_eq!(
-        inflate_capped(&[0x78, 0xBB, 0, 0, 0, 0], 100),
-        Err(DecodeError::Corrupt("bad zlib header")),
+    assert!(
+        matches!(
+            inflate_capped(&[0x78, 0xBB, 0, 0, 0, 0], 100),
+            Err(DecodeError::Corrupt(_))
+        ),
         "FDICT"
     );
 }
 
 #[test]
-fn dec06_empty_input_is_empty_output() {
-    assert_eq!(inflate_capped(b"", 0).unwrap(), b"", "DEC-06");
-    assert_eq!(
-        decode(&stream(Some(name("FlateDecode")), None, Vec::new())).unwrap(),
-        b""
+fn dec06_empty_flate_input_is_corrupt() {
+    assert!(
+        matches!(inflate_capped(b"", 0), Err(DecodeError::Corrupt(_))),
+        "DEC-06"
     );
+    assert!(matches!(
+        decode(&stream(Some(name("FlateDecode")), None, Vec::new())),
+        Err(DecodeError::Corrupt(_))
+    ));
     assert_eq!(
         decode(&stream(None, None, b"q Q".to_vec())).unwrap(),
         b"q Q",
