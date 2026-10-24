@@ -64,6 +64,11 @@ The Edit PDF workspace adds text, images, shapes, links, and freehand drawing as
 new content. It can also create PDF notes, highlights, underlines, strikeouts,
 and ink annotations while preserving existing annotations.
 
+**Edit existing text.** Change a line of existing text in the document's own
+font when OffPDF can verify the change: every other glyph is checked to stay
+within 0.01 pt, lines that can't be changed safely say why, and the original
+file is never overwritten. See [docs/EDIT_TEXT.md](./docs/EDIT_TEXT.md).
+
 For interactive PDFs, OffPDF can fill existing AcroForm text fields (including
 multiline fields), checkboxes, radio buttons, combo boxes, and list boxes. Form
 fields stay interactive by default.
@@ -80,8 +85,13 @@ Current limits: XFA forms are not supported, and only the first PDF's AcroForm
 can be filled when several files are combined. Editing existing page content
 depends on the PDF's structure; unsupported operations leave it unchanged.
 
-The investigation behind that boundary is recorded in the
+The earlier investigation behind that boundary is recorded in the
 [source-content editing decision](./docs/source-editing-decision.md).
+
+On the development branch, Edit text can change a supported line in the document's own font. It does not
+reflow paragraphs, add fonts, or change text inside reused blocks, rotated or
+vertical text, scanned pages, or signed and encrypted PDFs. Existing images are
+not replaced. See [Edit text limitations](./docs/EDIT_TEXT.md).
 
 ## Downloads
 
@@ -184,8 +194,8 @@ npm run tauri:build
 
 | Engine | Used for |
 | --- | --- |
-| `qpdf` | Merge, split, organize, encrypt, decrypt, repair, and lossless optimization |
-| Poppler (`pdftoppm`, `pdftotext`) | Previews, image export, comparison, text export, and lossy compression |
+| `qpdf` | Merge, split, organize, encrypt, decrypt, repair, lossless optimization, and writing Edit text changes |
+| Poppler (`pdftoppm`, `pdftotext`) | Previews, image export, comparison, text export, lossy compression, and verifying Edit text changes |
 | Tesseract | OCR and searchable PDFs |
 | LibreOffice | Office conversion and PDF/A export |
 
