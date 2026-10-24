@@ -120,52 +120,77 @@ function buildViews({ runs, objects, fonts, layout, preview, duplicate }: ViewIn
   const mapping = makeMapping(layout.geometry, layout.cssWidth, layout.cssHeight);
   const byRun = new Map(objects.map((o) => [o.runId, o]));
   const verdicts = new Map((preview?.verdicts ?? []).map((v) => [v.runId, v]));
-  return runs
-    .slice()
-    .sort((a, b) => a.order - b.order)
-    .map((run) => {
-      const obj = byRun.get(run.id) ?? null;
-      const verdict = verdicts.get(run.id) ?? null;
-      const geom = obj ? editedGeometry(run, obj, verdict, fonts) : { rect: run.rect, caretOffsets: run.caretOffsets };
-      const css = pdfRectToViewport(geom.rect, mapping);
-      const h = Math.max(css.h, MIN_HIT_PX);
-      const o = pdfToViewport(run.origin, mapping);
-      const o2 = pdfToViewport({ x: run.origin.x + run.dir.x, y: run.origin.y + run.dir.y }, mapping);
-      const len = Math.hypot(o2.x - o.x, o2.y - o.y) || 1;
-      const notes: string[] = [];
-      let flagged: RunView["flagged"] = null;
-      if (verdict && !verdict.ok && obj) {
-        notes.push(problemMessage(verdict, run, fonts));
-        flagged = "problem";
+  const warningsByRun = new Map<string, TextPreview["warnings"]>();
+  let hasOverlapWarning = false;
+  for (const warning of preview?.warnings ?? []) {
+    if (warning.code === "NEXT_TEXT_OVERLAP") hasOverlapWarning = true;
+    const warnings = warningsByRun.get(warning.runId) ?? [];
+    warnings.push(warning);
+    warningsByRun.set(warning.runId, warnings);
+  }
+  const ordered = runs.slice().sort((a, b) => a.order - b.order);
+  const nextByRun = new Map<string, TextRun>();
+  if (hasOverlapWarning) {
+    // A warning needs the first later run on its line. Equal-order runs share a successor.
+    const lines = new Map<number, TextRun[]>();
+    for (const run of ordered) {
+      const line = lines.get(run.line) ?? [];
+      line.push(run);
+      lines.set(run.line, line);
+    }
+    for (const line of lines.values()) {
+      for (let first = 0; first < line.length;) {
+        let after = first + 1;
+        while (after < line.length && line[after].order === line[first].order) after++;
+        if (after < line.length) {
+          for (let i = first; i < after; i++) nextByRun.set(line[i].id, line[after]);
+        }
+        first = after;
       }
-      for (const w of preview?.warnings ?? []) {
-        if (w.runId !== run.id) continue;
-        notes.push(warningCopy(w.code, nextOnLine(runs, run)?.text));
-        flagged = flagged ?? "warning";
-      }
-      if (run.substituted) notes.push(UI.substituted);
-      const refused = duplicate || !run.editable;
-      if (duplicate) notes.unshift(UI.banner.duplicatePage);
-      else if (!run.editable) notes.unshift(fillCopy(UI.run.refusedDescribe, { short: reasonCopy(run.reason).short }));
-      return {
-        run,
-        obj,
-        css,
-        hit: { x: css.x, y: css.y + css.h / 2 - h / 2, w: css.w, h },
-        area: css.w * css.h,
-        caretOffsets: geom.caretOffsets,
-        origin: o,
-        dir: { x: (o2.x - o.x) / len, y: (o2.y - o.y) / len },
-        label: refused
-          ? run.text
-          : obj
-            ? editedRunLabel(obj.text, obj.originalText)
-            : fillCopy(UI.run.editable, { text: run.text }),
-        describe: notes.join(" "),
-        state: refused ? "refused" : obj ? "edited" : "editable",
-        flagged,
-      };
-    });
+    }
+  }
+  return ordered.map((run) => {
+    const obj = byRun.get(run.id) ?? null;
+    const verdict = verdicts.get(run.id) ?? null;
+    const geom = obj ? editedGeometry(run, obj, verdict, fonts) : { rect: run.rect, caretOffsets: run.caretOffsets };
+    const css = pdfRectToViewport(geom.rect, mapping);
+    const h = Math.max(css.h, MIN_HIT_PX);
+    const o = pdfToViewport(run.origin, mapping);
+    const o2 = pdfToViewport({ x: run.origin.x + run.dir.x, y: run.origin.y + run.dir.y }, mapping);
+    const len = Math.hypot(o2.x - o.x, o2.y - o.y) || 1;
+    const notes: string[] = [];
+    let flagged: RunView["flagged"] = null;
+    if (verdict && !verdict.ok && obj) {
+      notes.push(problemMessage(verdict, run, fonts));
+      flagged = "problem";
+    }
+    for (const w of warningsByRun.get(run.id) ?? []) {
+      notes.push(warningCopy(w.code, nextByRun.get(run.id)?.text));
+      flagged = flagged ?? "warning";
+    }
+    if (run.substituted) notes.push(UI.substituted);
+    const refused = duplicate || !run.editable;
+    if (duplicate) notes.unshift(UI.banner.duplicatePage);
+    else if (!run.editable) notes.unshift(fillCopy(UI.run.refusedDescribe, { short: reasonCopy(run.reason).short }));
+    return {
+      run,
+      obj,
+      css,
+      hit: { x: css.x, y: css.y + css.h / 2 - h / 2, w: css.w, h },
+      area: css.w * css.h,
+      caretOffsets: geom.caretOffsets,
+      origin: o,
+      dir: { x: (o2.x - o.x) / len, y: (o2.y - o.y) / len },
+      label: refused
+        ? run.text
+        : obj
+          ? editedRunLabel(obj.text, obj.originalText)
+          : fillCopy(UI.run.editable, { text: run.text }),
+      describe: notes.join(" "),
+      state: refused ? "refused" : obj ? "edited" : "editable",
+      flagged,
+    };
+  });
 }
 
 export function SourceTextLayer(props: SourceTextLayerProps) {
@@ -183,7 +208,8 @@ export function SourceTextLayer(props: SourceTextLayerProps) {
     () => buildViews({ runs, objects, fonts, layout, preview, duplicate }),
     [runs, objects, fonts, layout, preview, duplicate],
   );
-  const rovingId = views.some((v) => v.run.id === focusedId) ? focusedId : (views[0]?.run.id ?? null);
+  const viewById = useMemo(() => new Map(views.map((v) => [v.run.id, v])), [views]);
+  const rovingId = focusedId && viewById.has(focusedId) ? focusedId : (views[0]?.run.id ?? null);
 
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -228,7 +254,7 @@ export function SourceTextLayer(props: SourceTextLayerProps) {
     if (v.state === "refused") return fillCopy(UI.run.refusedDescribe, { short: reasonCopy(v.run.reason).short });
     return v.run.substituted ? UI.substituted : null;
   };
-  const hovered = views.find((v) => v.run.id === hoverId) ?? null;
+  const hovered = hoverId ? viewById.get(hoverId) ?? null : null;
   const hoveredTip = tipText(hovered);
   useEffect(() => {
     setTipId(null);
@@ -237,8 +263,10 @@ export function SourceTextLayer(props: SourceTextLayerProps) {
     return () => clearTimeout(timer);
   }, [hoverId, hoveredTip]);
 
-  const pinned = new Set([rovingId, props.editingId, props.popoverId, ...objects.map((o) => o.runId)]);
-  const shown = views.filter((v) => pinned.has(v.run.id) || !view || intersects(v.hit, view));
+  const shown = useMemo(() => {
+    const pinned = new Set([rovingId, props.editingId, props.popoverId, ...objects.map((o) => o.runId)]);
+    return views.filter((v) => pinned.has(v.run.id) || !view || intersects(v.hit, view));
+  }, [views, view, rovingId, props.editingId, props.popoverId, objects]);
 
   const activate = (v: RunView, caret: number | "all") => {
     props.onFocusedChange(v.run.id, false);
@@ -277,7 +305,7 @@ export function SourceTextLayer(props: SourceTextLayerProps) {
 
   const mapping = makeMapping(layout.geometry, layout.cssWidth, layout.cssHeight);
   // The reason dialog opens where the tooltip sits (just under the line) and says more: no tooltip under it.
-  const tip = props.popoverId ? null : (views.find((v) => v.run.id === tipId) ?? null);
+  const tip = props.popoverId || !tipId ? null : viewById.get(tipId) ?? null;
   const cursor = hovered ? (hovered.state === "refused" ? " is-over-refused" : " is-over-editable") : "";
 
   return (

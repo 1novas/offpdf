@@ -74,6 +74,47 @@ describe("usePageText", () => {
     expect(backend.inspectTextPage).toHaveBeenCalledTimes(2);
   });
 
+  it("reuses an in-flight prefetch when the user opens that page", async () => {
+    let finishNext!: (value: PageText) => void;
+    backend.inspectTextPage.mockImplementation((_path, fp, index) =>
+      index === 1 ? new Promise((resolve) => { finishNext = resolve; }) : Promise.resolve(page(index, fp)),
+    );
+    mount(at(0));
+    await act(async () => {});
+    await act(async () => {
+      vi.advanceTimersByTime(PAGE_TEXT_PREFETCH_MS);
+    });
+    expect(backend.inspectTextPage.mock.calls.map((call) => call[2])).toEqual([0, 1]);
+
+    render(at(1));
+    expect(state.status).toBe("loading");
+    expect(backend.inspectTextPage).toHaveBeenCalledTimes(2);
+    await act(async () => finishNext(page(1)));
+    expect(state.status).toBe("ready");
+    expect(state.page?.pageIndex).toBe(1);
+    expect(backend.inspectTextPage).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a failed prefetch when the page is opened later", async () => {
+    let firstNext = true;
+    backend.inspectTextPage.mockImplementation((_path, fp, index) => {
+      if (index === 1 && firstNext) {
+        firstNext = false;
+        return Promise.reject(new Error("prefetch failed"));
+      }
+      return Promise.resolve(page(index, fp));
+    });
+    mount(at(0));
+    await act(async () => {});
+    await act(async () => {
+      vi.advanceTimersByTime(PAGE_TEXT_PREFETCH_MS);
+    });
+    render(at(1));
+    await act(async () => {});
+    expect(state.status).toBe("ready");
+    expect(backend.inspectTextPage.mock.calls.map((call) => call[2])).toEqual([0, 1, 1]);
+  });
+
   it("leaving the page before 300 ms cancels the prefetch; the last page has nothing to prefetch", async () => {
     mount(at(0));
     await act(async () => {});

@@ -1,6 +1,8 @@
 //! BENCH-01/02 (SPEC §E.7; `#[ignore]`, run locally): timings of open, inspect, preview and Save
 //! on generated documents, with the peak resident set size (`getrusage`) of a child process per
-//! configuration, printed as Markdown tables for `docs/EDIT_TEXT.md` §12.
+//! configuration, printed as Markdown tables for `docs/EDIT_TEXT.md` §12. Each child generates
+//! its fixture, so its RSS includes fixture construction and excludes
+//! qpdf/Poppler subprocesses; it is not an end-to-end edit memory measurement.
 //!
 //! ```text
 //! cargo test --lib -j 6 text_edit::bench -- --ignored --nocapture            # debug build
@@ -10,8 +12,8 @@
 //! BENCH-01: 10 / 100 / 1,000 pages of 40 Helvetica lines — open, inspect p50/p95 (cold: first
 //! visit of a page; warm: the cached model), preview p50/p95, Save with 1 / 10 / 100 changed
 //! lines. BENCH-02: a ~300 MB image-heavy file (Flate and DCT images, 20 text pages) — open to
-//! first inspect, the background `qpdf --check`, one preview, Save with 1 change; budgets: first
-//! inspect ≤ 3 s, Save ≤ 90 s, peak RSS ≤ 3 × file size.
+//! first inspect, cold open-to-preview (including any background `qpdf --check` wait), a second
+//! preview, and Save with 1 change; budgets: first inspect ≤ 3 s, Save ≤ 90 s.
 #[cfg(test)]
 // the module is test-only (declared under #[cfg(test)]); this line ends the API scan
 use crate::models::PageGroup;
@@ -135,9 +137,21 @@ fn timed_preview(t: &E2e, src: &Path, fp: &str, page: u32) -> Duration {
     let dto = t.try_inspect(src, fp, page).expect("inspect");
     let old = line_text(page as usize, 0);
     let run = dto.runs.iter().find(|r| r.text == old).expect("line 0");
+    timed_preview_with_run(t, src, fp, page, &run.id, &old)
+}
+
+/// The UI already has the inspected run when the user edits it; do not inspect it again here.
+fn timed_preview_with_run(
+    t: &E2e,
+    src: &Path,
+    fp: &str,
+    page: u32,
+    run_id: &str,
+    old: &str,
+) -> Duration {
     let edits = [edit_in(
-        &run.id,
-        &old,
+        run_id,
+        old,
         &old.replace("fox", "dog"),
         SourceTextStyleIn::default(),
     )];
@@ -321,32 +335,30 @@ fn bench_02_child() {
     let started = Instant::now();
     let info = t.open(&src);
     let opened = started.elapsed();
-    t.try_inspect(&src, &info.fingerprint, 0)
+    let inspected = t
+        .try_inspect(&src, &info.fingerprint, 0)
         .expect("first inspect");
     let first_inspect = started.elapsed();
-    {
-        // Held only for the wait: a file over CACHE_SNAPSHOT_BYTES_MAX is not kept by the cache,
-        // and nothing in the app holds its snapshot during a preview or a Save.
-        let src_ref = t
-            .cache
-            .open(&src, &t.temp_root(), &t.engines)
-            .expect("source");
-        t.cache
-            .source_check(&src_ref, &t.engines)
-            .expect("check")
-            .wait(None)
-            .expect("check result");
-    }
-    let check = started.elapsed();
-    let preview = timed_preview(&t, &src, &info.fingerprint, 3);
+    let original = line_text(0, 0);
+    let run = inspected
+        .runs
+        .iter()
+        .find(|r| r.text == original)
+        .expect("line 0");
+    // The first real preview must pay for any unfinished background qpdf --check. The inner
+    // timer starts with the run the UI already inspected; open_to_preview includes the inspect.
+    let cold_preview = timed_preview_with_run(&t, &src, &info.fingerprint, 0, &run.id, &original);
+    let open_to_preview = started.elapsed();
+    let second_preview = timed_preview_with_run(&t, &src, &info.fingerprint, 0, &run.id, &original);
     let save = timed_save(&t, &src, vec![edit_object(&t, &src, 5, 7)], "heavy-save");
     let rss = peak_rss_mib();
     println!(
-        "BENCH02|{size_mib:.0}|{:.0}|{:.0}|{:.0}|{:.0}|{:.0}|{rss:.0}|{:.2}",
+        "BENCH02|{size_mib:.0}|{:.0}|{:.0}|{:.0}|{:.0}|{:.0}|{:.0}|{rss:.0}|{:.2}",
         ms(opened),
         ms(first_inspect - opened),
-        ms(check),
-        ms(preview),
+        ms(open_to_preview),
+        ms(cold_preview),
+        ms(second_preview),
         ms(save),
         rss / size_mib
     );
@@ -371,8 +383,8 @@ fn bench_02_image_heavy_300_mb() {
         .find_map(|l| l.split("BENCH02|").nth(1))
         .unwrap_or_else(|| panic!("no BENCH02 row:\n{out}"))
         .replace('|', " | ");
-    println!("\nBENCH-02 ({} build; budgets: first inspect ≤ 3,000 ms, save ≤ 90,000 ms, peak RSS ≤ 3 × file)\n", if cfg!(debug_assertions) { "debug" } else { "release" });
-    println!("| file MiB | open ms | first inspect ms (after open) | qpdf --check done ms (from the start of open) | preview ms | save 1 edit ms | peak RSS MiB | RSS / file |");
-    println!("|---|---|---|---|---|---|---|---|");
+    println!("\nBENCH-02 ({} build; budgets: first inspect ≤ 3,000 ms, save ≤ 90,000 ms; RSS includes fixture generation, excludes subprocesses)\n", if cfg!(debug_assertions) { "debug" } else { "release" });
+    println!("| file MiB | open ms | first inspect ms (after open) | open to first preview ms | cold preview ms (after page inspect) | second preview ms | save 1 edit ms | process peak RSS MiB | process RSS / file |");
+    println!("|---|---|---|---|---|---|---|---|---|");
     println!("| {row} |");
 }

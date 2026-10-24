@@ -167,6 +167,27 @@ describe("SourceTextLayer", () => {
     expect(described?.textContent).toBe("Can't be changed: shared with other pages");
   });
 
+  it("keeps every warning and names the next run on the same line", () => {
+    const tied = run("r-tied", TOTAL.order, TOTAL.line, "Later", 380, 700);
+    mount([tied, SHARED, TOTAL, INVOICE], {
+      preview: {
+        pagePdf: null,
+        verdicts: [],
+        pageProblem: null,
+        warnings: [
+          { runId: INVOICE.id, code: "NEXT_TEXT_OVERLAP", detail: null },
+          { runId: INVOICE.id, code: "PREVIEW_UNAVAILABLE", detail: null },
+        ],
+      },
+    });
+    const invoice = buttonFor(INVOICE);
+    const described = document.getElementById(invoice.getAttribute("aria-describedby")!);
+    expect(described?.textContent).toContain("The new text runs into “Later”.");
+    expect(described?.textContent).toContain("Preview");
+    expect(invoice.className).toContain("is-warning");
+    expect(buttonFor(SHARED).className).not.toContain("is-warning");
+  });
+
   it("Enter (and F2) on an editable line opens the editor with all text selected", () => {
     const spies = mount([INVOICE, SHARED]);
     key(buttonFor(INVOICE), "Enter");

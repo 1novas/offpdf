@@ -5,7 +5,7 @@
  * shown one is ready; leaving the page before then cancels it. An answer for a
  * page the user already left is dropped.
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { inspectTextPage } from "@/lib/tauriCommands";
 import { toAppError, type AppError, type PageText } from "@/lib/types";
 
@@ -65,8 +65,20 @@ function unexpectedAnswer(): AppError {
 
 export function usePageText({ path, fingerprint, sourcePageIndex, enabled, pageCount }: PageTextArgs): PageTextState {
   const cache = useRef(new Map<string, PageText>());
+  const inFlight = useRef(new Map<string, Promise<PageText>>());
   const [state, setState] = useState<PageTextState & { key: string | null }>({ ...IDLE, key: null });
   const key = enabled && path && fingerprint && sourcePageIndex !== null ? `${fingerprint}#${sourcePageIndex}` : null;
+  const inspect = useCallback((requestKey: string, sourcePath: string, sourceFingerprint: string, pageIndex: number) => {
+    const pending = inFlight.current.get(requestKey);
+    if (pending) return pending;
+    const request = inspectTextPage(sourcePath, sourceFingerprint, pageIndex);
+    inFlight.current.set(requestKey, request);
+    const clear = () => {
+      if (inFlight.current.get(requestKey) === request) inFlight.current.delete(requestKey);
+    };
+    void request.then(clear, clear);
+    return request;
+  }, []);
 
   useEffect(() => {
     if (!key || !path || !fingerprint || sourcePageIndex === null) {
@@ -80,7 +92,7 @@ export function usePageText({ path, fingerprint, sourcePageIndex, enabled, pageC
     }
     let active = true;
     setState({ ...LOADING, key });
-    inspectTextPage(path, fingerprint, sourcePageIndex).then(
+    inspect(key, path, fingerprint, sourcePageIndex).then(
       (page) => {
         if (!active) return;
         if (!isPageText(page, fingerprint, sourcePageIndex)) {
@@ -97,7 +109,7 @@ export function usePageText({ path, fingerprint, sourcePageIndex, enabled, pageC
     return () => {
       active = false;
     };
-  }, [key, path, fingerprint, sourcePageIndex]);
+  }, [key, path, fingerprint, sourcePageIndex, inspect]);
 
   const ready = state.key === key && state.status === "ready";
   useEffect(() => {
@@ -106,7 +118,7 @@ export function usePageText({ path, fingerprint, sourcePageIndex, enabled, pageC
     const nextKey = `${fingerprint}#${next}`;
     if (next >= pageCount || cache.current.has(nextKey)) return;
     const timer = setTimeout(() => {
-      inspectTextPage(path, fingerprint, next).then(
+      inspect(nextKey, path, fingerprint, next).then(
         (page) => {
           if (isPageText(page, fingerprint, next)) lruPut(cache.current, nextKey, page, PAGE_TEXT_CACHE_PAGES);
         },
@@ -117,7 +129,7 @@ export function usePageText({ path, fingerprint, sourcePageIndex, enabled, pageC
       );
     }, PAGE_TEXT_PREFETCH_MS);
     return () => clearTimeout(timer);
-  }, [ready, path, fingerprint, sourcePageIndex, pageCount]);
+  }, [ready, path, fingerprint, sourcePageIndex, pageCount, inspect]);
 
   if (!key) return IDLE;
   if (state.key !== key) return LOADING;

@@ -547,15 +547,18 @@ committed). Real files are checked with the manual protocol in
 ## 12. Performance and engine matrix
 
 Measured on an Apple M5 (10 cores, 24 GiB), macOS 26.4.1, rustc 1.96.0, qpdf
-12.3.2, Poppler 26.04.0, release build, **2026-10-03**, on the final v0.4 code.
-Other builds shared the machine (load average 30–38 on 10 cores), so times are
-pessimistic; peak RSS is not affected.
+12.3.2 and Poppler 26.04.0, release build. The timing tables were rerun on
+**2026-10-24** on the text-edit branch; they are individual samples, not latency
+guarantees. The binary-size comparison below is from **2026-10-03**.
+`getrusage(RUSAGE_SELF)` counts only the benchmark child, not qpdf/Poppler, and
+each child also constructs its fixture. Its RSS is **not** a
+measurement of total edit memory use.
 
 **Engine matrix (the four #33 axes).**
 
 | Path | Binary size | Memory (peak RSS) | Build and signing cost | Native crash isolation |
 | --- | --- | --- | --- | --- |
-| Shipped: lopdf 0.34 (read only) + own lexer and walker + qpdf writer + Poppler verifier | macOS arm64 executable 12,866,048 → 13,991,552 bytes (+1,125,504 bytes, +8.7 %); bundled tools unchanged, so this is the whole bundle delta. Windows: not measured | 51 MiB (10 pages), 86 MiB (100), 114 MiB (1,000 pages); 639 MiB for a 305 MiB image-heavy file (2.10 × the file) | No new native binary: `qpdf`, `pdftotext` and `pdftoppm` are already bundled and signed (`scripts/sign-macos-bundled-tools.sh`, `scripts/prepare-poppler-windows.ps1`). No new crate; `flate2` moved from dev-dependency to dependency (MIT/Apache-2.0, already compiled in through lopdf). | qpdf and Poppler run out of process with a 120 s timeout. lopdf parses in process under `panic = "abort"`, behind a raw preflight (xref chain, nesting, `/Length` chains), object-stream guards, per-page budgets and fuzzing. Residual risk: lopdf's parser on inputs within those bounds (the same exposure every existing lopdf feature has). |
+| Text-edit branch: lopdf 0.34 (read only) + own lexer and walker + qpdf writer + Poppler verifier | macOS arm64 executable 12,866,048 → 13,991,552 bytes (+1,125,504 bytes, +8.7 %); bundled tools unchanged, so this is the whole bundle delta. Windows: not measured | Benchmark-child RSS: 50 MiB (10 pages), 94 MiB (100), 115 MiB (1,000 pages); 645 MiB for a 305 MiB image-heavy file. This excludes tool subprocesses and includes fixture construction. | No new native binary: `qpdf`, `pdftotext` and `pdftoppm` are already bundled and signed (`scripts/sign-macos-bundled-tools.sh`, `scripts/prepare-poppler-windows.ps1`). No new crate; `flate2` moved from dev-dependency to dependency (MIT/Apache-2.0, already compiled in through lopdf). | qpdf and Poppler run out of process with a 120 s timeout. lopdf parses in process under `panic = "abort"`, behind a raw preflight (xref chain, nesting, `/Length` chains), object-stream guards, per-page budgets and fuzzing. Residual risk: lopdf's parser on inputs within those bounds (the same exposure every existing lopdf feature has). |
 | PDFium sidecar | not prototyped | not prototyped | not prototyped (would add a per-platform native binary to build, sign and notarise) | not prototyped |
 
 BENCH-SIZE: `src-tauri/target/release/offpdf` from `cargo build --release -j 6`
@@ -569,26 +572,31 @@ pages; Save with N changed lines spread over the pages; times in ms):
 
 | Pages | File KiB | Open | Inspect cold p50 / p95 | Inspect warm p50 / p95 | Preview p50 / p95 | Save 1 | Save 10 | Save 100 | Peak RSS MiB |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 10 | 29.8 | 25 | 1 / 3 | 0 / 0 | 360 / 399 | 416 | 2,341 | 2,329 | 51 |
-| 100 | 298.7 | 32 | 1 / 2 | 1 / 2 | 369 / 388 | 440 | 2,321 | 21,979 | 86 |
-| 1,000 | 3,026.1 | 86 | 2 / 4 | 0 / 1 | 346 / 513 | 1,069 | 2,630 | 22,969 | 114 |
+| 10 | 29.8 | 22 | 1 / 2 | 0 / 0 | 281 / 341 | 291 | 1,321 | 1,355 | 50 |
+| 100 | 298.7 | 33 | 1 / 1 | 0 / 0 | 282 / 305 | 308 | 1,399 | 12,017 | 94 |
+| 1,000 | 3,026.1 | 48 | 1 / 1 | 0 / 0 | 258 / 313 | 475 | 1,462 | 12,144 | 115 |
 
 **BENCH-02** (a 305 MiB file: 20 text pages and 31 image pages, each with a
 5 MiB Flate image and a JPEG):
 
-| File MiB | Open ms | First inspect ms (after open) | Background `qpdf --check` done ms (from open) | Preview ms | Save 1 edit ms | Peak RSS MiB | RSS / file |
+| File MiB | Open ms | First inspect ms (after open) | Open to first preview ms | Cold preview ms (after inspect) | Second preview ms | Save 1 edit ms | Process peak RSS MiB |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 305 | 1,555 | 1,345 | 4,256 | 1,713 | 11,850 | 639 | 2.10 |
+| 305 | 1,771 | 1,471 | 5,096 | 1,853 | 3,250 | 15,897 | 645 |
 
-Budgets: first inspect ≤ 3 s after open (1.3 s), Save ≤ 90 s (11.9 s), peak RSS
-≤ 3 × file (2.10 ×). All met.
+The first preview now includes any wait for the background `qpdf --check`; the
+old benchmark waited for that check before starting its preview timer. A second
+run with a slightly different preview sequence took 6.7 s to Save rather than
+15.9 s, so the single-run timings should not be treated as guarantees. The
+first inspect and Save targets (≤ 3 s after open and ≤ 90 s) passed. The previous
+"peak RSS ≤ 3 × file" claim cannot be validated with this benchmark: a process
+tree measurement is still needed.
 
 What the numbers mean for users:
 
-- Opening is fast; the full `qpdf --check` runs in the background and does not
-  block the first inspect.
+- The full `qpdf --check` runs in the background and does not block the first
+  inspect, but the first preview waits for it if it has not finished.
 - Save time grows with the number of edited **pages**, not lines (Phase A runs
-  Poppler twice per edited page, about 0.2 s each here): 100 pages took about 22 s.
+  Poppler twice per edited page): 100 pages took about 12 s in this run.
 - Files above 100 MB work but check and save more slowly, which the app says when
   the file opens; files above 256 MiB are re-read by later visits (section 15).
 
