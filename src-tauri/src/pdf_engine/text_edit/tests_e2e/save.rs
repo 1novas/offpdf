@@ -284,7 +284,14 @@ fn e2e_overlap_warning_reaches_the_job_message() {
     let saved = t
         .save(&[(&src, "1-z")], vec![obj])
         .expect("overlap is a warning");
-    t.assert_saved(&saved.path, &[(&src, 0, 0, "Name", "Names and")]);
+    t.assert_checks_clean(&saved.path);
+    // The new line intentionally overlaps "Value". Poppler can interleave that neighbour
+    // when extracting words ("NamesValueand"), so assert the saved PDF's actual text runs
+    // rather than requiring the edited words to be contiguous in extraction order.
+    let (_, edited_page) = t.page(&saved.path, 0);
+    assert!(edited_page.runs.iter().any(|r| r.text == "Names and"));
+    assert!(edited_page.runs.iter().any(|r| r.text == "Value"));
+    assert!(!edited_page.runs.iter().any(|r| r.text == "Name"));
     assert_eq!(
         saved.warnings,
         vec!["Page 1: the changed line \u{201c}Names and\u{201d} runs into the text that follows it.".to_string()]

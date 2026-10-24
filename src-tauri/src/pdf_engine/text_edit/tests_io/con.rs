@@ -4,7 +4,7 @@ use crate::pdf_engine::text_edit::content::{
     page_content, part_exclusive, qpdf_join, KidsCounts, PageContent, RefCounts,
 };
 use crate::pdf_engine::text_edit::decode::{decode_stream, DecodeBudget};
-use crate::pdf_engine::text_edit::engines::{run_tool, RunOpts};
+use crate::pdf_engine::text_edit::engines::{parse_qpdf_version, run_tool, RunOpts};
 use crate::pdf_engine::text_edit::reasons::TextReason;
 use crate::pdf_engine::text_edit::snapshot::{read_snapshot, snapshot_from_bytes};
 use crate::pdf_engine::text_edit::testkit::pdf::{Doc, PdfBuilder};
@@ -325,6 +325,22 @@ const JOIN_CASES: &[(&[&[u8]], &[u8])] = &[
     (&[], b""),
 ];
 
+// qpdf 11.9 checks the last byte of each stream, so an empty stream still asks for a
+// separator even if the preceding step just wrote one. qpdf 12.3 checks the buffer
+// including that separator instead. The difference only matters for empty parts.
+fn qpdf_11_join(parts: &[&[u8]]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut need_newline = false;
+    for part in parts {
+        if need_newline {
+            out.push(b'\n');
+        }
+        out.extend_from_slice(part);
+        need_newline = part.last() != Some(&b'\n');
+    }
+    out
+}
+
 #[test]
 fn con10_qpdf_join_rule() {
     for (parts, want) in JOIN_CASES {
@@ -334,6 +350,14 @@ fn con10_qpdf_join_rule() {
     let Some(engines) = engines_or_skip("con10_qpdf_join_rule") else {
         return;
     };
+    let version = run_tool(
+        &engines.qpdf,
+        &[OsString::from("--version")],
+        false,
+        &RunOpts::default(),
+    )
+    .unwrap();
+    let (major, _) = parse_qpdf_version(&String::from_utf8_lossy(&version.stdout)).unwrap();
     let s = Scratch::new("con10");
     let blank = s.write("blank.pdf", &Doc::new(&[&[b""]]).build());
     for (i, (parts, want)) in JOIN_CASES
@@ -375,10 +399,15 @@ fn con10_qpdf_join_rule() {
             panic!("Fx0 is a stream")
         };
         let data = decode_stream(form, 1 << 20, &mut DecodeBudget::new(usize::MAX)).unwrap();
+        let expected = if major == 11 {
+            qpdf_11_join(parts)
+        } else {
+            want.to_vec()
+        };
         assert_eq!(
             data,
-            *want,
-            "CON-10 installed qpdf joins {parts:?} as {:?}",
+            expected,
+            "CON-10 installed qpdf {major} joins {parts:?} as {:?}",
             String::from_utf8_lossy(&data)
         );
     }

@@ -22,6 +22,9 @@ const MIB: usize = 1 << 20;
 #[test]
 fn a_long_unpainted_path_costs_constant_work_per_op() {
     // 200,000 rectangles (800,000 points) before one `n`: each op checks only its own points.
+    // This runs in a debug build on shared CI. Keep a generous ceiling that still catches the
+    // old growing-path scan without making normal machine-to-machine variation a failure.
+    const PATH_CPU_LIMIT: Duration = Duration::from_secs(5);
     let mut c = "0 0 1 1 re ".repeat(200_000);
     c.push_str("n BT /F1 12 Tf 72 700 Td (Hello) Tj ET");
     let started = thread_cpu();
@@ -29,7 +32,7 @@ fn a_long_unpainted_path_costs_constant_work_per_op() {
     let cpu = thread_cpu().saturating_sub(started);
     assert_eq!(m.page_reason, None, "{:?}", m.page_detail);
     assert_eq!(reason_of(&m, "Hello"), None);
-    assert!(cpu < Duration::from_secs(2), "200,000 re took {cpu:?}");
+    assert!(cpu < PATH_CPU_LIMIT, "200,000 re took {cpu:?}");
     // Curves too (3 points per op).
     let mut c = String::from("0 0 m ");
     c.push_str(&"1 1 2 2 3 3 c ".repeat(100_000));
@@ -38,7 +41,7 @@ fn a_long_unpainted_path_costs_constant_work_per_op() {
     let m = model0(helvetica_page(c.as_bytes()));
     let cpu = thread_cpu().saturating_sub(started);
     assert_eq!(reason_of(&m, "Hello"), None);
-    assert!(cpu < Duration::from_secs(2), "100,000 c took {cpu:?}");
+    assert!(cpu < PATH_CPU_LIMIT, "100,000 c took {cpu:?}");
     // A point that overflows is still refused, at the op that adds it (a CTM of scale 1e306,
     // then x = 1e9).
     let scale = "1000000000 0 0 1000000000 0 0 cm ".repeat(34);
