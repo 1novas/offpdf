@@ -15,12 +15,12 @@ data model (`kind: "sourceText"` objects, keyboard contract) is in
 | | |
 | --- | --- |
 | Question | Can OffPDF reliably change existing page text or embedded images without pretending that PDF is a word-processing format? |
-| Decision | **Yes, for a bounded, fail-closed subset of text.** Existing images are not replaced in v0.4. |
-| Status | Accepted with the v0.4 implementation. The maintainer confirms it on #11 before the release PR is merged. |
+| Decision | **Yes, for a bounded, fail-closed subset of text.** Existing images are not replaced in this release. |
+| Status | Implemented in the bounded source-text editor; released in v0.5.0. |
 | Date | 2026-10-02 |
 | Owner | @McanKul (maintainer) |
 | Scope | One line at a time, inside the page's own content stream, in a font the page already uses, verified before it is saved. |
-| Not in scope | Image replacement (the image half of #11), text inside reusable blocks (Form XObjects), annotation text, shared content streams, Type3, vertical, right-to-left and complex scripts, reflow, new fonts. See [section 15](#15-known-limitations-and-v05-candidates). |
+| Not in scope | Image replacement (the image half of #11), text inside reusable blocks (Form XObjects), annotation text, shared content streams, Type3, vertical, right-to-left and complex scripts, reflow, new fonts. See [section 15](#15-known-limitations-and-future-work). |
 | Engine | lopdf 0.34 (read only) + OffPDF's own bounded lexer and walker, qpdf as the only writer, Poppler as an independent verifier. No PDFium sidecar ([section 13](#13-engine-decision)). |
 | Evidence | The reason codes ([6](#6-reason-codes)), the compatibility matrix ([11](#11-compatibility-matrix)), the measured performance and engine matrix ([12](#12-performance-and-engine-matrix)) and the adversarial gate tests ([9](#9-verification)). |
 
@@ -67,7 +67,7 @@ text** places a new text box and never replaces existing text; **Add text here**
 in the reason dialog puts one over the line (an upright one-line box at the
 line's start when the line is not level on screen).
 
-Before you rely on it, read the limits in [section 15](#15-known-limitations-and-v05-candidates).
+Before you rely on it, read the limits in [section 15](#15-known-limitations-and-future-work).
 The two you are most likely to meet: a subset font only contains the letters the
 document already uses, and a file with any damaged JPEG image is refused with
 `PDF_NEEDS_REPAIR`.
@@ -76,7 +76,7 @@ document already uses, and a file with any damaged JPEG image is refused with
 
 ### Unit of editing
 
-| Rule | v0.4 |
+| Rule | Current release |
 | --- | --- |
 | What changes | The text of one line: one show operator (`Tj`, `TJ`, `'`, `"`), or several consecutive ones joined into one visual line. Only text the page's own `/Contents` draws directly; text drawn through a Form XObject is listed as refused lines (`NESTED_FORM`) after the page's own lines. |
 | Joining | Same baseline (0.01 pt) and direction, same graphics and text state except the font, the same marked-content context, the same font or a sibling face of it, a gap within ±0.3 em, nothing painted in between, at most 256 pieces. Gaps between joined pieces become `TJ` kerns, so unchanged glyphs keep their positions. |
@@ -87,7 +87,7 @@ document already uses, and a file with any damaged JPEG image is refused with
 
 ### Fonts
 
-| Font setup | v0.4 | How a letter is proven drawable |
+| Font setup | Current release | How a letter is proven drawable |
 | --- | --- | --- |
 | Simple TrueType, embedded (full or subset) | Editable | The glyph is found by every applicable lookup (glyph name, Unicode cmap, MacRoman cmap, symbolic cmap) and all lookups agree; the outline has at least one segment |
 | Simple CFF (`/Type1C`) and OpenType (`/OpenType`) | Editable | Glyph by name from the PDF encoding, or by the program's own built-in encoding (read by OffPDF's bounded parser); outline present |
@@ -220,13 +220,13 @@ the page shows one banner instead of outlines.
 | `GEOMETRY` | page | `/UserUnit` other than 1, unreadable or degenerate page boxes, or a `/Rotate` that is not a multiple of 90 | custom page unit | Custom page unit | This page uses a custom unit size or unreadable page boxes, which OffPDF doesn't edit yet. |
 <!-- ui-copy:end -->
 
-Image occurrences are classified too (the #33 classifier), but v0.4 does not
+Image occurrences are classified too (the #33 classifier), but this release does not
 edit images and does not show these codes. In priority order: `INLINE_IMAGE`,
 `NESTED_FORM`, `CLIPPED`, `PATTERN`, `MASKED_IMAGE` (drawn with a mask or soft
 mask), `SHARED_XOBJECT` (one image used in more than one place),
 `TRANSFORMED_IMAGE` (rotated, skewed or mirrored image), `GEOMETRY`.
 
-The codes are append-only after v0.4. The single source of truth is
+The codes are append-only from this release. The single source of truth is
 [`src/lib/editor/text-reasons.json`](../src/lib/editor/text-reasons.json); see
 [`EDIT_MODEL.md`](../src/lib/editor/EDIT_MODEL.md#adding-a-reason-code) for how a code is added.
 
@@ -519,7 +519,7 @@ producer-shaped fixture built in memory by the test kit (no third-party PDFs are
 committed). Real files are checked with the manual protocol in
 [section 17](#17-manual-test-protocol).
 
-| Producer | Typical structure | v0.4 | Evidence |
+| Producer | Typical structure | Current release | Evidence |
 | --- | --- | --- | --- |
 | Microsoft Word, Latin | TrueType subset, WinAnsi, `/Widths`, ToUnicode, kerned `TJ` per format run, page-sized clip, tagged (`/MCID`), bookmarks | Editable; letters limited to the subset | FX-WORD: E2E-03, PLAN-04, IND-01, RUN-01 |
 | Word, Turkish / Polish / Czech | the same plus a Type0 companion font for non-WinAnsi letters | Editable as one line (sibling join); ğ ş ı İ when present in either subset | FX-WORD-TR: E2E-04, RUN-05, IND-01 |
@@ -618,7 +618,7 @@ Poppler as the independent verifier. No PDFium sidecar.**
 - **Crash isolation is obtained differently.** Everything that writes or
   independently verifies runs out of process (qpdf, Poppler). lopdf only reads,
   from bounded, preflighted bytes, with per-page budgets and fuzzed parsers.
-  Moving the lopdf read into a helper process is a v0.5 option.
+  Moving the lopdf read into a helper process is a future option.
 - **lopdf and qpdf must agree.** Because lopdf 0.34 can read some files
   differently from qpdf (pages without `/Type`, hybrid xref sections), every
   file is checked for page-map agreement at open and on every file the gate reads;
@@ -666,9 +666,9 @@ Examples as shipped:
 | `UI.notVisible` | This change doesn't change how the page looks. Something may be drawn over this line. |
 <!-- ui-copy:end -->
 
-## 15. Known limitations and v0.5 candidates
+## 15. Known limitations and future work
 
-Limitations of v0.4, in plain terms:
+Limitations of the current implementation, in plain terms:
 
 - **A damaged JPEG anywhere in the file blocks preview and Save** with
   `PDF_NEEDS_REPAIR`. `qpdf --check` decodes every JPEG, and "JPEG data is
@@ -726,12 +726,12 @@ Limitations of v0.4, in plain terms:
   budgets above; a malformed file that passes them shares the exposure of every
   existing lopdf feature.
 
-Out of v0.4 by decision (never faked, always refused with a reason): image
+Out of scope for this release by decision (never faked, always refused with a reason): image
 replacement, text inside Form XObjects, annotation and form-widget text,
 shared content streams, Type3, vertical, right-to-left and complex scripts,
 `/UserUnit` ≠ 1, reflow and multi-line editing, font embedding or substitution.
 
-v0.5 candidates:
+Candidates for a later release:
 
 - copy-on-write for shared content streams through qpdf JSON page dictionaries
   (probe P2 shows qpdf can write a new stream and drop the old one);

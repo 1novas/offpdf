@@ -4,6 +4,8 @@ All notable project changes should be documented here.
 
 ## Unreleased
 
+## 0.5.0 - 2026-10-25
+
 ### Added
 
 - Edit PDF can change existing text in place, in the document's own font. OffPDF only offers lines it can verify: every other glyph on the page is checked to stay within 0.01 pt, each edited page is re-read, re-rendered and compared before the new file replaces the destination, and lines that can't be changed safely, including text inside reusable blocks, say why. A longer line that runs into the next text on the line (a table cell, for example) saves with a warning. The original file is never overwritten. See [docs/EDIT_TEXT.md](docs/EDIT_TEXT.md).

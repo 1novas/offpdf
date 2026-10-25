@@ -88,7 +88,7 @@ depends on the PDF's structure; unsupported operations leave it unchanged.
 The earlier investigation behind that boundary is recorded in the
 [source-content editing decision](./docs/source-editing-decision.md).
 
-On the development branch, Edit text can change a supported line in the document's own font. It does not
+Edit text can change a supported line in the document's own font. It does not
 reflow paragraphs, add fonts, or change text inside reused blocks, rotated or
 vertical text, scanned pages, or signed and encrypted PDFs. Existing images are
 not replaced. See [Edit text limitations](./docs/EDIT_TEXT.md).
