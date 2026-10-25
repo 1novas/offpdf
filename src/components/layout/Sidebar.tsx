@@ -25,7 +25,38 @@ function NavRow({ to, icon, label, end }: { to: string; icon: IconName; label: s
   );
 }
 
-export function Sidebar() {
+function NavButton({
+  icon,
+  label,
+  onClick,
+  keyshortcuts,
+}: {
+  icon: IconName;
+  label: string;
+  onClick: () => void;
+  keyshortcuts?: string;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      aria-keyshortcuts={keyshortcuts}
+      className="nav-item"
+      onClick={(e) => {
+        // Keep the trigger focused so the dialog can restore focus on close,
+        // including webviews that do not focus buttons on click.
+        e.currentTarget.focus();
+        onClick();
+      }}
+    >
+      <Icon name={icon} size={18} className="nav-item__icon" />
+      <span className="sr-only">{label}</span>
+    </button>
+  );
+}
+
+export function Sidebar({ onOpenShortcuts }: { onOpenShortcuts?: () => void }) {
   return (
     <aside className="sidebar" aria-label="Primary navigation">
       <div className="sidebar__brand" title="OffPDF" aria-label="OffPDF">
@@ -44,6 +75,14 @@ export function Sidebar() {
 
       <nav className="sidebar__nav sidebar__nav--footer" aria-label="App">
         <ThemeToggle />
+        {onOpenShortcuts && (
+          <NavButton
+            icon="keyboard"
+            label="Keyboard shortcuts"
+            keyshortcuts="?"
+            onClick={onOpenShortcuts}
+          />
+        )}
         <NavRow to="/settings" icon="settings" label="Settings" />
         <NavRow to="/about" icon="info" label="About" />
       </nav>

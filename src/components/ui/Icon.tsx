@@ -61,6 +61,7 @@ export type IconName =
   | "mousePointer"
   | "hand"
   | "type"
+  | "textCursor"
   | "square"
   | "rectangle"
   | "squareFill"
@@ -77,7 +78,8 @@ export type IconName =
   | "star"
   | "roundSquare"
   | "hexagon"
-  | "bubble";
+  | "bubble"
+  | "keyboard";
 
 const PATHS: Record<IconName, JSX.Element> = {
   merge: (
@@ -337,6 +339,15 @@ const PATHS: Record<IconName, JSX.Element> = {
       <path d="M9 19h6" />
     </>
   ),
+  /** I-beam with a small pencil: Edit text (change words already on the page). */
+  textCursor: (
+    <>
+      <path d="M4 4c1.9 0 3.5 1 3.5 2.4v11.2C7.5 19 5.9 20 4 20" />
+      <path d="M11 4c-1.9 0-3.5 1-3.5 2.4M11 20c-1.9 0-3.5-1-3.5-2.4" />
+      <path d="M5 12h5" />
+      <path d="M18.6 8.4a1.6 1.6 0 0 1 2.3 2.3L15 16.6l-3 .8.8-3z" />
+    </>
+  ),
   square: <rect x="5" y="5" width="14" height="14" rx="1.5" />,
   rectangle: <rect x="3" y="7" width="18" height="10" rx="1.5" />,
   squareFill: <rect x="5" y="5" width="14" height="14" rx="1.5" fill="currentColor" stroke="currentColor" />,
@@ -391,6 +402,16 @@ const PATHS: Record<IconName, JSX.Element> = {
   hexagon: <path d="M8 4h8l5 8-5 8H8l-5-8z" />,
   bubble: (
     <path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-5l-3.5 3v-3H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" />
+  ),
+  keyboard: (
+    <>
+      <rect x="2" y="6" width="20" height="12" rx="2" />
+      <path d="M6 10h.01" />
+      <path d="M10 10h.01" />
+      <path d="M14 10h.01" />
+      <path d="M18 10h.01" />
+      <path d="M8 14h8" />
+    </>
   ),
   alertTriangle: (
     <>
