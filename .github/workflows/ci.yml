@@ -124,5 +124,9 @@ jobs:
           npm ci
           npm run build
 
+      - name: Stage qpdf and Windows runtime DLLs
+        shell: pwsh
+        run: ./scripts/prepare-qpdf-windows.ps1
+
       - name: Link Rust test binary
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib --no-run
