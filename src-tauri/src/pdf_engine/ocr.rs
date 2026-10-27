@@ -17,6 +17,37 @@ use tauri::Manager;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
+/// Upper bound on the retained per-page searchable PDFs for one OCR pass. The
+/// PNG for the page currently being processed is removed before the next page,
+/// so the peak work-directory size is this budget plus one page image.
+const MAX_OCR_WORK_BYTES: u64 = 256 * 1024 * 1024;
+
+/// Upper bound on one rendered image or one per-page searchable PDF. This
+/// prevents a single pathological page from filling the work directory before
+/// the aggregate budget can be checked.
+const MAX_OCR_PAGE_BYTES: u64 = 64 * 1024 * 1024;
+
+fn file_bytes(path: &Path) -> u64 {
+    std::fs::metadata(path).map(|meta| meta.len()).unwrap_or(0)
+}
+
+fn budget_exceeded(used: u64, added: u64, limit: u64) -> bool {
+    used.saturating_add(added) > limit
+}
+
+fn temp_limit_error() -> AppError {
+    AppError::new(
+        "OCR_TEMP_LIMIT",
+        "OCR needs too much temporary space",
+        "This document is too large to OCR safely in one pass.",
+    )
+    .with_details(format!(
+        "OCR temporary data is limited to {} MiB per pass.",
+        MAX_OCR_WORK_BYTES / (1024 * 1024)
+    ))
+    .with_suggestion("Select fewer pages, or split the document before using OCR.")
+}
+
 fn tesseract_exe() -> &'static str {
     if cfg!(windows) {
         "tesseract.exe"
@@ -194,9 +225,15 @@ pub fn ocr(
     if picks.is_empty() {
         return Err(AppError::new("NO_PAGES", "No pages", "Add a PDF first."));
     }
+    if handle.is_cancelled() {
+        return Err(AppError::cancelled());
+    }
     let installed = list_langs(app)?;
     let installed_refs: Vec<&str> = installed.iter().map(String::as_str).collect();
     ocr_langs::validate_ocr_lang(lang, &installed_refs)?;
+    if handle.is_cancelled() {
+        return Err(AppError::cancelled());
+    }
     super::ensure_output_dir(output)?;
 
     let pdftoppm = render::resolve_pdftoppm(app);
@@ -208,6 +245,7 @@ pub fn ocr(
     let result = (|| -> Result<Vec<String>, AppError> {
         let n = picks.len();
         let mut page_pdfs: Vec<String> = Vec::with_capacity(n);
+        let mut retained_bytes = 0u64;
 
         for (i, pk) in picks.iter().enumerate() {
             if handle.is_cancelled() {
@@ -247,6 +285,13 @@ pub fn ocr(
             if !png.exists() {
                 return Err(AppError::engine_failed(rerr.trim().to_string()));
             }
+            let png_bytes = file_bytes(&png);
+            if png_bytes > MAX_OCR_PAGE_BYTES
+                || budget_exceeded(retained_bytes, png_bytes, MAX_OCR_WORK_BYTES)
+            {
+                let _ = std::fs::remove_file(&png);
+                return Err(temp_limit_error());
+            }
 
             // 2. tesseract PNG → searchable one-page PDF
             let out_base = work.join(format!("o{i}"));
@@ -270,6 +315,19 @@ pub fn ocr(
             if !page_pdf.exists() {
                 return Err(AppError::engine_failed(terr.trim().to_string()));
             }
+            let page_bytes = file_bytes(&page_pdf);
+            if page_bytes > MAX_OCR_PAGE_BYTES
+                || budget_exceeded(
+                    retained_bytes,
+                    png_bytes.saturating_add(page_bytes),
+                    MAX_OCR_WORK_BYTES,
+                )
+            {
+                let _ = std::fs::remove_file(&png);
+                let _ = std::fs::remove_file(&page_pdf);
+                return Err(temp_limit_error());
+            }
+            retained_bytes = retained_bytes.saturating_add(page_bytes);
             page_pdfs.push(page_pdf.to_string_lossy().to_string());
             let _ = std::fs::remove_file(&png);
         }
@@ -292,4 +350,21 @@ pub fn ocr(
 
     let _ = std::fs::remove_dir_all(&work);
     result
+}
+
+#[cfg(test)]
+mod temp_budget_tests {
+    use super::{budget_exceeded, MAX_OCR_PAGE_BYTES, MAX_OCR_WORK_BYTES};
+
+    #[test]
+    fn rejects_work_above_the_budget() {
+        assert!(!budget_exceeded(0, MAX_OCR_WORK_BYTES, MAX_OCR_WORK_BYTES));
+        assert!(budget_exceeded(1, MAX_OCR_WORK_BYTES, MAX_OCR_WORK_BYTES));
+        assert!(budget_exceeded(u64::MAX, 1, MAX_OCR_WORK_BYTES));
+    }
+
+    #[test]
+    fn one_page_cannot_exceed_its_own_cap() {
+        assert!(MAX_OCR_PAGE_BYTES <= MAX_OCR_WORK_BYTES);
+    }
 }

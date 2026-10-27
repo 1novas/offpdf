@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  INGESTION_HARD_LIMITS,
   INGESTION_LIMITS,
   IngestionCancelledError,
   hasUsableText,
@@ -544,6 +545,135 @@ describe("ingestPdfSources failure and limit handling", () => {
     );
     expect(countedResult.chunks).toHaveLength(1);
     expect(countedResult.stats.truncated).toBe(true);
+  });
+
+  it("leaves pages unread after a native text cap unprocessed", async () => {
+    const { runtime, calls } = makeRuntime({
+      info: { sizeBytes: 100, pageCount: 3, isValidPdf: true },
+      extract: { pages: ["Useful first page."], truncated: true },
+    });
+
+    const result = await ingestPdfSources(
+      [source("/tmp/capped.pdf", "f1")],
+      runtime,
+    );
+
+    expect(calls.extracted).toEqual(["/tmp/capped.pdf"]);
+    expect(calls.ocr).toEqual([]);
+    expect(result.issues).toContainEqual(
+      expect.objectContaining({ code: "TEXT_LIMIT" }),
+    );
+    expect(result.issues.some((issue) => issue.code === "OCR_REQUIRED")).toBe(
+      false,
+    );
+    expect(result.stats).toMatchObject({
+      pageCount: 1,
+      nativePages: 1,
+      emptyPages: 0,
+      truncated: true,
+    });
+    expect(result.sources[0].consideredPages).toBe(1);
+    expect(result.chunks.map((chunk) => chunk.page)).toEqual([1]);
+  });
+
+  it("does not OCR pages that native extraction never read", async () => {
+    const { runtime, calls } = makeRuntime({
+      info: { sizeBytes: 100, pageCount: 3, isValidPdf: true },
+      extract: { pages: [""], truncated: true },
+      ocr: { pages: ["OCR recovered page one."], truncated: false },
+    });
+
+    const result = await ingestPdfSources(
+      [source("/tmp/capped.pdf", "f1")],
+      runtime,
+      { ocr: { enabled: true, language: "eng" } },
+    );
+
+    expect(calls.ocr).toHaveLength(1);
+    expect(calls.ocr[0].pages).toEqual([1]);
+    expect(result.stats).toMatchObject({
+      pageCount: 1,
+      ocrPages: 1,
+      emptyPages: 0,
+      truncated: true,
+    });
+  });
+
+  it("hard-caps source, page and file limit overrides", async () => {
+    const huge = Number.MAX_SAFE_INTEGER;
+
+    const many = makeRuntime({
+      info: { sizeBytes: 100, pageCount: 1, isValidPdf: true },
+      extract: { pages: ["Useful text."], truncated: false },
+    });
+    const manySources = Array.from(
+      { length: INGESTION_HARD_LIMITS.maxSources + 1 },
+      (_, index) => source(`/tmp/${index}.pdf`, `f${index}`),
+    );
+    const manyResult = await ingestPdfSources(manySources, many.runtime, {
+      limits: { maxSources: huge },
+    });
+    expect(many.calls.inspected).toHaveLength(
+      INGESTION_HARD_LIMITS.maxSources,
+    );
+    expect(manyResult.issues).toContainEqual(
+      expect.objectContaining({ code: "TOO_MANY_SOURCES" }),
+    );
+
+    const tooLarge = makeRuntime({
+      info: {
+        sizeBytes: INGESTION_HARD_LIMITS.maxSourceBytes + 1,
+        pageCount: 1,
+        isValidPdf: true,
+      },
+    });
+    const largeResult = await ingestPdfSources(
+      [source("/tmp/large.pdf", "f1")],
+      tooLarge.runtime,
+      { limits: { maxSourceBytes: huge } },
+    );
+    expect(largeResult.issues[0].code).toBe("SOURCE_TOO_LARGE");
+    expect(tooLarge.calls.extracted).toEqual([]);
+
+    const pageCount = INGESTION_HARD_LIMITS.maxPagesPerSource + 1;
+    const pages = Array.from(
+      { length: pageCount },
+      (_, index) => `Useful page text ${index + 1}.`,
+    );
+    const paged = makeRuntime({
+      info: { sizeBytes: 100, pageCount, isValidPdf: true },
+      extract: { pages, truncated: false },
+    });
+    const pageResult = await ingestPdfSources(
+      [source("/tmp/paged.pdf", "f1")],
+      paged.runtime,
+      { limits: { maxPagesPerSource: huge } },
+    );
+    expect(pageResult.sources[0].consideredPages).toBe(
+      INGESTION_HARD_LIMITS.maxPagesPerSource,
+    );
+
+    const perSource = INGESTION_HARD_LIMITS.maxPagesPerSource;
+    const totalPages = Array.from(
+      { length: perSource },
+      (_, index) => `Useful page text ${index + 1}.`,
+    );
+    const total = makeRuntime({
+      info: { sizeBytes: 100, pageCount: perSource, isValidPdf: true },
+      extract: { pages: totalPages, truncated: false },
+    });
+    const totalResult = await ingestPdfSources(
+      [
+        source("/tmp/one.pdf", "f1"),
+        source("/tmp/two.pdf", "f2"),
+        source("/tmp/three.pdf", "f3"),
+      ],
+      total.runtime,
+      { limits: { maxTotalPages: huge } },
+    );
+    expect(totalResult.stats.pageCount).toBe(
+      INGESTION_HARD_LIMITS.maxTotalPages,
+    );
   });
 
   it("caps the number of sources and rejects invalid or duplicate ids", async () => {

@@ -22,13 +22,13 @@
 import { RETRIEVAL_LIMITS, type PageChunk } from "./retrieval";
 
 export interface IngestionLimits {
-  /** Maximum documents considered in one call. Defaults to 20. */
+  /** Maximum documents considered in one call. Defaults to 20; hard-capped at 20. */
   readonly maxSources: number;
-  /** Maximum pages considered per source. Defaults to 1,000. */
+  /** Maximum pages considered per source. Defaults to 1,000; hard-capped at 1,000. */
   readonly maxPagesPerSource: number;
-  /** Maximum pages considered across all sources. Defaults to 2,000. */
+  /** Maximum pages considered across all sources. Defaults to 2,000; hard-capped at 2,000. */
   readonly maxTotalPages: number;
-  /** Maximum source file size. Defaults to 200 MiB. */
+  /** Maximum source file size. Defaults to 200 MiB; hard-capped at 200 MiB. */
   readonly maxSourceBytes: number;
   /** Maximum total characters put into chunks. Defaults to 2,000,000. */
   readonly maxIndexChars: number;
@@ -40,11 +40,20 @@ export interface IngestionLimits {
   readonly maxOcrPages: number;
 }
 
-export const INGESTION_LIMITS: IngestionLimits = {
+/**
+ * Hard safety ceilings. Overrides may lower these limits for a call, but can
+ * never raise them: a caller cannot turn a bounded ingestion into an unbounded
+ * file/page scan.
+ */
+export const INGESTION_HARD_LIMITS = {
   maxSources: 20,
   maxPagesPerSource: 1_000,
   maxTotalPages: 2_000,
   maxSourceBytes: 200 * 1024 * 1024,
+} as const;
+
+export const INGESTION_LIMITS: IngestionLimits = {
+  ...INGESTION_HARD_LIMITS,
   maxIndexChars: RETRIEVAL_LIMITS.maxIndexChars,
   maxChunkChars: 4_000,
   maxChunks: RETRIEVAL_LIMITS.maxChunks,
@@ -399,9 +408,15 @@ export async function ingestPdfSources(
       });
     }
 
+    // If the native extractor hit its byte cap, pages after the last returned
+    // page were never read. Leave them unprocessed: they are not empty pages
+    // and must not be reported as OCR-required or OCR'd automatically.
+    const processedPages = extracted.truncated
+      ? Math.min(considered, extracted.pages.length)
+      : considered;
     const nativeTexts: string[] = [];
     const emptyPageNumbers: number[] = [];
-    for (let page = 1; page <= considered; page++) {
+    for (let page = 1; page <= processedPages; page++) {
       const text = normalizePageText(extracted.pages[page - 1] ?? "");
       nativeTexts.push(text);
       if (!hasUsableText(text)) emptyPageNumbers.push(page);
@@ -547,9 +562,9 @@ export async function ingestPdfSources(
     // chunk loop got, so a mid-page index limit does not under-report pages.
     const sourceOcr = ocrTexts.size;
     const sourceEmpty = emptyPageNumbers.length - sourceOcr;
-    const sourceNative = considered - emptyPageNumbers.length;
+    const sourceNative = processedPages - emptyPageNumbers.length;
     let hitIndexLimit = false;
-    for (let page = 1; page <= considered; page++) {
+    for (let page = 1; page <= processedPages; page++) {
       throwIfAborted(signal);
       if (chunks.length >= limits.maxChunks || totalChars >= limits.maxIndexChars) {
         truncated = true;
@@ -601,13 +616,13 @@ export async function ingestPdfSources(
     nativePages += sourceNative;
     ocrPages += sourceOcr;
     emptyPages += sourceEmpty;
-    totalPages += considered;
+    totalPages += processedPages;
     sources.push({
       id,
       path: source.path,
       name,
       pageCount,
-      consideredPages: considered,
+      consideredPages: processedPages,
       nativePages: sourceNative,
       ocrPages: sourceOcr,
       emptyPages: sourceEmpty,
@@ -721,18 +736,24 @@ export function sourceBasename(path: string): string {
 
 function resolveLimits(overrides: Partial<IngestionLimits> | undefined): IngestionLimits {
   return {
-    maxSources: positiveInt(overrides?.maxSources, INGESTION_LIMITS.maxSources),
-    maxPagesPerSource: positiveInt(
-      overrides?.maxPagesPerSource,
-      INGESTION_LIMITS.maxPagesPerSource,
+    maxSources: Math.min(
+      positiveInt(overrides?.maxSources, INGESTION_LIMITS.maxSources),
+      INGESTION_HARD_LIMITS.maxSources,
     ),
-    maxTotalPages: positiveInt(
-      overrides?.maxTotalPages,
-      INGESTION_LIMITS.maxTotalPages,
+    maxPagesPerSource: Math.min(
+      positiveInt(
+        overrides?.maxPagesPerSource,
+        INGESTION_LIMITS.maxPagesPerSource,
+      ),
+      INGESTION_HARD_LIMITS.maxPagesPerSource,
     ),
-    maxSourceBytes: positiveInt(
-      overrides?.maxSourceBytes,
-      INGESTION_LIMITS.maxSourceBytes,
+    maxTotalPages: Math.min(
+      positiveInt(overrides?.maxTotalPages, INGESTION_LIMITS.maxTotalPages),
+      INGESTION_HARD_LIMITS.maxTotalPages,
+    ),
+    maxSourceBytes: Math.min(
+      positiveInt(overrides?.maxSourceBytes, INGESTION_LIMITS.maxSourceBytes),
+      INGESTION_HARD_LIMITS.maxSourceBytes,
     ),
     maxIndexChars: Math.min(
       positiveInt(overrides?.maxIndexChars, INGESTION_LIMITS.maxIndexChars),
