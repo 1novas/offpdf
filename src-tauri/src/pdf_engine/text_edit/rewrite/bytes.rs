@@ -159,6 +159,11 @@ fn primary_bytes(
         ));
     }
     let moved = laid.move_user != (0.0, 0.0);
+    let m = primary.tm_before;
+    let tlm = primary
+        .tlm_before
+        .as_deref()
+        .map_or(m, |t| [m[0], m[1], m[2], m[3], t[0], t[1]]);
     let (moved_tm, restore_tm) = if moved {
         let tm = |m: [f64; 6], x: f64, y: f64| -> Result<String, EditProblem> {
             Ok(format!(
@@ -171,11 +176,6 @@ fn primary_bytes(
                 fmt_precise(y)?
             ))
         };
-        let m = primary.tm_before;
-        let tlm = primary
-            .tlm_before
-            .as_deref()
-            .map_or(m, |t| [m[0], m[1], m[2], m[3], t[0], t[1]]);
         (
             Some(tm(m, m[4] + laid.move_text.0, m[5] + laid.move_text.1)?),
             Some(tm(tlm, tlm[4], tlm[5])?),
