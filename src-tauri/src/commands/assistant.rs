@@ -81,6 +81,10 @@ pub async fn assistant_ocr_text(
     }
 
     let handle = registry.register(&job_id);
+    if handle.is_cancelled() {
+        registry.remove(&job_id);
+        return Err(AppError::cancelled());
+    }
     let app2 = app.clone();
     let jid = job_id.clone();
     let joined = tauri::async_runtime::spawn_blocking(move || {
