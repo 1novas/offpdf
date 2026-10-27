@@ -106,8 +106,10 @@ pub struct ShowRecord {
     pub after: Arc<StateDigest>,
     pub tm_before: Matrix,
     pub tm_after: Matrix,
-    /// The text line matrix at the show: a `Tm` restore must keep it where the source had it.
-    pub tlm_before: Matrix,
+    /// The translation of the text line matrix when it differs from `tm_before`'s (a show op
+    /// after an earlier show on the same line): a `Tm` restore must keep the line matrix where
+    /// the source had it. Its linear part is always `tm_before`'s.
+    pub tlm_before: Option<Box<[f64; 2]>>,
     pub glyphs: Vec<GlyphRec>,
     pub elems: Vec<RecElem>,
     /// User space, rise included (= the first glyph's origin when the op starts with a glyph).

@@ -97,9 +97,20 @@ fn move_02_text_and_move_are_one_edit() {
     assert!(v.problem.is_none(), "text+move refused: {:?}", v.problem);
     let rect = v.new_rect.expect("rect");
     assert!(close(rect[0], run.rect[0] + 20.0, 0.02), "x {}", rect[0]);
-    assert!(close(rect[1], run.rect[1] - 10.0, 0.02), "y {}", rect[1]);
     assert!(rect[2] > run.rect[2], "the added glyph makes it wider");
-    assert_eq!(ok_plan(&out).runs[0].expected.move_user, (20.0, -10.0));
+    // The ink box's bottom changes with the new size, so check the moved baseline instead.
+    let expected = ok_plan(&out);
+    assert_eq!(expected.runs[0].expected.move_user, (20.0, -10.0));
+    assert!(close(
+        expected.runs[0].expected.origin.0,
+        run.origin.0 + 20.0,
+        0.02
+    ));
+    assert!(close(
+        expected.runs[0].expected.origin.1,
+        run.origin.1 - 10.0,
+        0.02
+    ));
     let r = replacement(&out, 0);
     assert!(r.contains("21"), "the new size and ! are written: {r}");
     assert_eq!(r.matches(" Tm").count(), 2, "{r}");

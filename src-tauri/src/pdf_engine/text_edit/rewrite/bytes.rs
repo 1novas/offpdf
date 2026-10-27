@@ -172,7 +172,10 @@ fn primary_bytes(
             ))
         };
         let m = primary.tm_before;
-        let tlm = primary.tlm_before;
+        let tlm = primary
+            .tlm_before
+            .as_deref()
+            .map_or(m, |t| [m[0], m[1], m[2], m[3], t[0], t[1]]);
         (
             Some(tm(m, m[4] + laid.move_text.0, m[5] + laid.move_text.1)?),
             Some(tm(tlm, tlm[4], tlm[5])?),
@@ -244,12 +247,20 @@ fn primary_bytes(
         if tfs == 0.0 || th == 0.0 {
             return Err(internal("zero size while restoring a moved line"));
         }
-        let dx = primary.tm_after[4] - primary.tlm_before[4];
-        let dy = primary.tm_after[5] - primary.tlm_before[5];
-        if !dx.is_finite() || !dy.is_finite() || dy.abs() > 1e-9 {
+        // The TJ below advances along text space, which a rotated `Tm` maps to a user-space
+        // direction other than +x. Project the translation difference onto the line matrix's
+        // text-x axis instead of assuming that difference is `(dx, 0)`.
+        let dx = primary.tm_after[4] - tlm[4];
+        let dy = primary.tm_after[5] - tlm[5];
+        let (a, b) = (tlm[0], tlm[1]);
+        let denom = a * a + b * b;
+        let cross = dx * b - dy * a;
+        let tolerance = 1e-9 * (1.0 + dx.abs() + dy.abs());
+        if !dx.is_finite() || !dy.is_finite() || denom <= f64::EPSILON || cross.abs() > tolerance {
             return Err(internal("the line matrix cannot be restored with a TJ"));
         }
-        let n = -dx * 1000.0 / (tfs * th);
+        let tx = (dx * a + dy * b) / denom;
+        let n = -tx * 1000.0 / (tfs * th);
         tokens.push(format!("[<> {}] TJ", fmt(n)?));
     }
     Ok((tokens.join(" "), seg_count + usize::from(moved)))

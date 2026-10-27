@@ -471,7 +471,8 @@ impl<'a> Walker<'a> {
             after,
             tm_before,
             tm_after: ex.tm,
-            tlm_before,
+            tlm_before: (tlm_before[4] != tm_before[4] || tlm_before[5] != tm_before[5])
+                .then(|| Box::new([tlm_before[4], tlm_before[5]])),
             glyphs,
             elems,
             pen_before,
