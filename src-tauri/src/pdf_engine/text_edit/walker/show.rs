@@ -459,8 +459,13 @@ impl<'a> Walker<'a> {
         self.mem
             .hold(spans + frame.chain.len() * size_of::<ObjectId>())?;
         let after = self.digest(ex)?;
+        let seq = self.next_seq()?;
+        if tlm_before[4] != tm_before[4] || tlm_before[5] != tm_before[5] {
+            self.mem.grow(&mut self.line_before, 1)?;
+            self.line_before.push((seq, [tlm_before[4], tlm_before[5]]));
+        }
         Ok(ShowRecord {
-            seq: self.next_seq()?,
+            seq,
             depth: frame.depth,
             form_chain: frame.chain.clone(),
             op: kind,
@@ -471,8 +476,6 @@ impl<'a> Walker<'a> {
             after,
             tm_before,
             tm_after: ex.tm,
-            tlm_before: (tlm_before[4] != tm_before[4] || tlm_before[5] != tm_before[5])
-                .then(|| Box::new([tlm_before[4], tlm_before[5]])),
             glyphs,
             elems,
             pen_before,

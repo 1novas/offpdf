@@ -141,6 +141,7 @@ fn segments(units: &[Planned], content: &PageContent) -> Vec<Segment> {
 fn primary_bytes(
     content: &PageContent,
     primary: &ShowRecord,
+    line_before: Option<[f64; 2]>,
     target: &StyleTarget,
     laid: &Laid,
 ) -> Result<(String, usize), EditProblem> {
@@ -160,10 +161,7 @@ fn primary_bytes(
     }
     let moved = laid.move_user != (0.0, 0.0);
     let m = primary.tm_before;
-    let tlm = primary
-        .tlm_before
-        .as_deref()
-        .map_or(m, |t| [m[0], m[1], m[2], m[3], t[0], t[1]]);
+    let tlm = line_before.map_or(m, |t| [m[0], m[1], m[2], m[3], t[0], t[1]]);
     let (moved_tm, restore_tm) = if moved {
         let tm = |m: [f64; 6], x: f64, y: f64| -> Result<String, EditProblem> {
             Ok(format!(
@@ -382,7 +380,8 @@ pub(super) fn run_plan(
         check_replacement_grammar(bytes.as_bytes(), tj)
             .map_err(|op| problem(P::EditVerifyFailed, format!("replacement grammar: {op}")))
     };
-    let (primary_text, seg_count) = primary_bytes(content, primary, &target, &laid)?;
+    let line_before = model.walk.line_matrix_before(primary.seq);
+    let (primary_text, seg_count) = primary_bytes(content, primary, line_before, &target, &laid)?;
     grammar(&primary_text, seg_count)?;
     let mut splices = vec![splice_of(content, primary, primary_text)?];
     let mut emitted_records = vec![seg_count];

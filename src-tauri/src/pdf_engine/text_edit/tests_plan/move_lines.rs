@@ -286,6 +286,24 @@ fn move_09_a_tm_positioned_line_restores_tlm_for_following_tstar() {
 }
 
 #[test]
+fn move_09b_a_mid_line_run_restores_the_line_start() {
+    // The second run starts after an earlier show on the same line: its `Tm` is not the line
+    // matrix, so the restore must put the line matrix back at x = 72, not at "World".
+    let c = ctx(helvetica_page(
+        b"BT /F1 12 Tf 14 TL 1 0 0 1 72 700 Tm (Hello) Tj 1 0 0 rg (World) Tj T* (next) Tj ET",
+    ));
+    let m = model(&c, 0);
+    let out = plan(&c, &m, &[moved(&m, "World", 20.0, -10.0)]);
+    assert!(
+        out.verdicts[0].problem.is_none(),
+        "{:?}",
+        out.verdicts[0].problem
+    );
+    let r = replacement(&out, 0);
+    assert!(r.contains("1 0 0 1 72 700 Tm"), "line start restored: {r}");
+}
+
+#[test]
 fn move_10_an_empty_text_removal_ignores_the_move() {
     let c = ctx(helvetica_page(b"BT /F1 12 Tf 72 700 Td (Hello) Tj ET"));
     let m = model(&c, 0);
