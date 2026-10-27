@@ -195,7 +195,7 @@ fn move_06_shared_and_unsupported_lines_stay_refused() {
     let c = ctx(fx::shared());
     let m = model(&c, 0);
     let run = run_with(&m, "Shared body");
-    assert!(!run.editable);
+    assert!(run.reasons.contains(&TextReason::SharedContent));
     let out = plan(&c, &m, &[moved(&m, "Shared body", 10.0, 0.0)]);
     let p = out.verdicts[0].problem.as_ref().expect("shared refused");
     assert_eq!(p.code, EditProblemCode::TextEditRefused);
@@ -205,7 +205,7 @@ fn move_06_shared_and_unsupported_lines_stay_refused() {
     let c = ctx(fx::type3());
     let m = model(&c, 0);
     let run = run_with(&m, "a");
-    assert!(!run.editable);
+    assert!(run.reasons.contains(&TextReason::Type3));
     let out = plan(&c, &m, &[moved(&m, "a", 10.0, 0.0)]);
     let p = out.verdicts[0].problem.as_ref().expect("type3 refused");
     assert_eq!(p.code, EditProblemCode::TextEditRefused);
@@ -219,7 +219,7 @@ fn move_07_malformed_geometry_has_no_editable_line_to_move() {
         let m = model(&c, 0);
         assert_eq!(m.page_reason, Some(TextReason::Geometry), "{kind:?}");
         assert!(
-            m.runs.iter().all(|r| !r.editable),
+            m.runs.iter().all(|r| !r.reasons.is_empty()),
             "{kind:?} has an editable run"
         );
     }
