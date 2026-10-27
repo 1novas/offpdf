@@ -67,6 +67,7 @@ export const UI = {
     editable: "Edit text: {text}",
     edited: "Edited text: {new}. Original: {old}",
     refusedDescribe: "Can't be changed: {short}",
+    moveHint: "Drag to move this line, or press Alt with an arrow key to nudge it.",
   },
   substituted: "This font isn't included in the PDF. Your PDF reader draws it with a similar font.",
   redactionConflict:
@@ -113,7 +114,12 @@ export const UI = {
   removal: "This line will be removed. Text after it stays where it is.",
   shownLarger: "Shown larger here than it will print.",
   blocked: "Fix or cancel this change first. Press Esc to cancel.",
-  announce: { applied: "Change applied. {width}", restored: "Original text restored." },
+  announce: {
+    applied: "Change applied. {width}",
+    restored: "Original text restored.",
+    moved: "Line moved by {dx} × {dy} points.",
+    movedHome: "Line moved back to its source position.",
+  },
   notVisible: "This change doesn't change how the page looks. Something may be drawn over this line.",
   bar: {
     label: "Text format",

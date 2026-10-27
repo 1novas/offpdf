@@ -34,7 +34,9 @@ use crate::pdf_engine::text_edit::limits::{
 use crate::pdf_engine::text_edit::reasons::{
     self, save_failure, EditProblem, EditProblemCode, ProblemCtx, TextWarningCode,
 };
-use crate::pdf_engine::text_edit::rewrite::{plan_page, PagePlan, SourceTextStyleIn, TextEditIn};
+use crate::pdf_engine::text_edit::rewrite::{
+    plan_page, MoveIn, PagePlan, SourceTextStyleIn, TextEditIn,
+};
 use crate::pdf_engine::text_edit::runs::{build_page_model, PageModel};
 use crate::pdf_engine::text_edit::snapshot::{check_page_map, read_snapshot};
 use crate::pdf_engine::validate_output::{content_digest, ContentDigest};
@@ -56,6 +58,7 @@ pub struct SourceTextSpec {
     pub original_text: String,
     pub text: String,
     pub style: SourceTextStyleIn,
+    pub move_by: Option<MoveIn>,
 }
 
 pub struct PreparedTextEdits {
@@ -124,6 +127,7 @@ pub fn specs_of(doc: &EditDocumentIn) -> Vec<SourceTextSpec> {
                 original_text,
                 text,
                 style,
+                move_by,
                 ..
             } => Some(SourceTextSpec {
                 page_index: *page_index,
@@ -133,6 +137,7 @@ pub fn specs_of(doc: &EditDocumentIn) -> Vec<SourceTextSpec> {
                 original_text: original_text.clone(),
                 text: text.clone(),
                 style: style.clone(),
+                move_by: *move_by,
             }),
             _ => None,
         })
@@ -628,6 +633,7 @@ fn plan_pages(
                 original_text: s.original_text.clone(),
                 text: s.text.clone(),
                 style: s.style.clone(),
+                move_by: s.move_by,
             })
             .collect();
         let outcome = plan_page(ctx, &model, &edits)?;

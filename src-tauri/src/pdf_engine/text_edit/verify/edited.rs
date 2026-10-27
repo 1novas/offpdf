@@ -277,10 +277,15 @@ fn check_origins(e: &Edited<'_>) -> Result<(), VerifyFailure> {
             .map(|o| o.origin)
             .ok_or_else(|| e.fail("origin"))?;
         let shifted = k >= suffix_from && !exp.unshifted_from.is_some_and(|u| k >= u);
+        // Every kept glyph travels with a moved line; a shifted suffix glyph also takes the
+        // width-change displacement from the edit itself.
         let expected = if shifted {
-            (orig.0 + exp.shift_user.0, orig.1 + exp.shift_user.1)
+            (
+                orig.0 + exp.move_user.0 + exp.shift_user.0,
+                orig.1 + exp.move_user.1 + exp.shift_user.1,
+            )
         } else {
-            orig
+            (orig.0 + exp.move_user.0, orig.1 + exp.move_user.1)
         };
         if dist(x.origin, expected) > DRIFT_TOLERANCE_PT + JOIN_BASELINE_TOL_PT {
             return Err(e.fail("origin"));

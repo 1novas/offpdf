@@ -7,7 +7,7 @@
 //! the work folder removed, and every source byte-identical to before.
 //!
 //! `fonts.rs` E2E-01…06, `save.rs` E2E-07…09, 17, 18, 22, `overlay.rs` E2E-10a…f, 11 and VO-01's
-//! end-to-end half, `refusals.rs` E2E-12…16, 19…21 and GATE-25, `preview.rs` PREV-01…07.
+//! end-to-end half, `refusals.rs` E2E-12…16, 19…21 and GATE-25, `preview.rs` PREV-01…08.
 
 mod fonts;
 mod join;

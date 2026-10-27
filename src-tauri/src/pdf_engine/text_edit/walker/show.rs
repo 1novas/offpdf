@@ -345,6 +345,7 @@ impl<'a> Walker<'a> {
         before: Arc<StateDigest>,
     ) -> Result<ShowRecord, Stop> {
         let tm_before = ex.tm;
+        let tlm_before = ex.tlm;
         let t = ex.gs.text.clone();
         let (tfs, th, tc, tw, ts) = (t.tfs, t.th, t.tc, t.tw, t.ts);
         let font = ex.gs.font_ref.clone();
@@ -470,6 +471,7 @@ impl<'a> Walker<'a> {
             after,
             tm_before,
             tm_after: ex.tm,
+            tlm_before,
             glyphs,
             elems,
             pen_before,

@@ -6,6 +6,7 @@ mod app;
 mod bugs;
 mod fuzz;
 mod meas;
+mod move_lines;
 mod plan;
 mod plan2;
 mod plan3;
@@ -88,6 +89,7 @@ pub(crate) fn edit(m: &PageModel, old: &str, new: &str, s: SourceTextStyleIn) ->
         original_text: old.to_string(),
         text: new.to_string(),
         style: s,
+        move_by: None,
     }
 }
 

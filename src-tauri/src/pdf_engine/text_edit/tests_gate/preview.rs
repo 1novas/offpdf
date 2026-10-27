@@ -1,6 +1,6 @@
 //! The preview core (§B.17) under the same Phase A as Save: a verified one-page PDF for an honest
 //! edit, no PDF for a failed verdict, files written once in the cache directory and every nonce
-//! directory removed. (The PREV-01…07 matrix through the command layer is T5's.)
+//! directory removed. (The PREV-01…08 matrix through the command layer is T5's.)
 
 use super::opts;
 use crate::pdf_engine::text_edit::context::SnapshotContext;
@@ -20,6 +20,7 @@ fn edit_of(m: &crate::pdf_engine::text_edit::runs::PageModel, old: &str, new: &s
         original_text: old.into(),
         text: new.into(),
         style: SourceTextStyleIn::default(),
+        move_by: None,
     }
 }
 

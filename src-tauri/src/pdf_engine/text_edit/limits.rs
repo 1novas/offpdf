@@ -53,7 +53,11 @@ pub const CLIP_CONTAIN_TOL_PT: f64 = 0.5;
 pub const OVERLAP_WARN_TOL_PT: f64 = 0.5;
 pub const NEGLIGIBLE_KERN: f64 = 0.0005;
 pub const NUMBER_DECIMALS: usize = 4;
+/// `Tm` operands need more precision: a restore must pass the strict post-state matrix check.
+pub const MOVE_NUMBER_DECIMALS: usize = 12;
 pub const NUMBER_ABS_MAX: f64 = 1e9;
+/// Largest accepted line move (points). Real pages are far smaller; bounds refuse the rest.
+pub const MOVE_MAX_PT: f64 = 100_000.0;
 pub const F32_DRIFT_GUARD_PT: f64 = 0.002;
 pub const STYLE_EPSILON: f64 = 0.001;
 pub const SIZE_MIN_PT: f64 = 4.0;

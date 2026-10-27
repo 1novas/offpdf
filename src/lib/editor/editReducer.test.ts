@@ -238,7 +238,14 @@ function setText(
   s: HistoryState,
   text: string,
   style: SourceTextStyle = {},
-  opts: { pageIndex?: number; run?: TextRun; id?: string; fingerprint?: string; rect?: TextRect } = {},
+  opts: {
+    pageIndex?: number;
+    run?: TextRun;
+    id?: string;
+    fingerprint?: string;
+    rect?: TextRect;
+    move?: { x: number; y: number };
+  } = {},
 ): HistoryState {
   const input = {
     pageIndex: opts.pageIndex ?? 0,
@@ -248,6 +255,7 @@ function setText(
     text,
     style,
     rect: opts.rect,
+    move: opts.move,
   };
   return editReducer(s, setSourceTextAction(input, opts.id ?? `id-${s.past.length}`));
 }
@@ -312,6 +320,40 @@ describe("editReducer sourceText", () => {
     const before = s;
     s = setText(s, "Hallo");
     expect(s).toBe(before);
+    const moved = setText(s, "Hallo", {}, { move: { x: 10, y: -2 } });
+    expect(moved).not.toBe(s);
+    expect(setText(moved, "Hallo", {}, { move: { x: 10, y: -2 } })).toBe(moved);
+    // A move below the rounding epsilon is no move at all.
+    expect(setText(s, "Hallo", {}, { move: { x: 0.005, y: -0.005 } })).toBe(s);
+  });
+
+  it("stores a move as one undo step and removes it when the line returns", () => {
+    let s = setText(createHistoryState(), "Hello", {}, { move: { x: 10, y: -2 } });
+    expect(sourceTexts(s)[0]).toMatchObject({ text: "Hello", style: {}, move: { x: 10, y: -2 } });
+    expect(s.past).toHaveLength(1);
+    s = setText(s, "Hello", {}, { move: { x: 20, y: -4 }, rect: { x: 92, y: 693, w: 27, h: 12 } });
+    expect(sourceTexts(s)[0]).toMatchObject({ move: { x: 20, y: -4 }, rect: { x: 92, y: 693 } });
+    expect(s.past).toHaveLength(2);
+    s = editReducer(s, { type: "UNDO" });
+    expect(sourceTexts(s)[0]).toMatchObject({ move: { x: 10, y: -2 } });
+    s = editReducer(s, { type: "REDO" });
+    expect(sourceTexts(s)[0]).toMatchObject({ move: { x: 20, y: -4 } });
+    s = setText(s, "Hello", {}, { move: { x: 0, y: 0 } });
+    expect(sourceTexts(s)).toHaveLength(0);
+    expect(s.past).toHaveLength(3);
+  });
+
+  it("keeps a text change and a move in the same object", () => {
+    let s = setText(createHistoryState(), "Hallo", { sizePt: 14 }, { move: { x: 10, y: -2 } });
+    expect(sourceTexts(s)[0]).toMatchObject({ text: "Hallo", style: { sizePt: 14 }, move: { x: 10, y: -2 } });
+    s = setText(s, "Hello", {}, { move: { x: 0, y: 0 } });
+    expect(sourceTexts(s)).toHaveLength(0);
+  });
+
+  it("ignores a move when the line is removed", () => {
+    const s = setText(createHistoryState(), "", {}, { move: { x: 10, y: -2 } });
+    expect(sourceTexts(s)[0]).toMatchObject({ text: "", style: {} });
+    expect(sourceTexts(s)[0].move).toBeUndefined();
   });
 
   it("deletes the change when the line is set back to the original (B7)", () => {

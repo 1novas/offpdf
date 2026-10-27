@@ -80,10 +80,16 @@ let root: Root | null = null;
 let host: HTMLElement;
 let stage: HTMLElement;
 
-type Spies = Pick<SourceTextLayerProps, "onEdit" | "onExplain" | "onRestore" | "onLeave">;
+type Spies = Pick<SourceTextLayerProps, "onEdit" | "onExplain" | "onRestore" | "onMove" | "onLeave">;
 
 function mount(runs: TextRun[], extra: Partial<SourceTextLayerProps> = {}, stageHeight = 792): Spies {
-  const spies: Spies = { onEdit: vi.fn(), onExplain: vi.fn(), onRestore: vi.fn(), onLeave: vi.fn() };
+  const spies: Spies = {
+    onEdit: vi.fn(),
+    onExplain: vi.fn(),
+    onRestore: vi.fn(),
+    onMove: vi.fn(),
+    onLeave: vi.fn(),
+  };
   stage = document.createElement("div");
   stage.getBoundingClientRect = () => ({ left: 0, top: 0, right: 612, bottom: stageHeight, width: 612, height: stageHeight, x: 0, y: 0, toJSON: () => ({}) });
   host = document.createElement("div");
@@ -157,6 +163,53 @@ describe("SourceTextLayer", () => {
     key(buttonFor(SHARED), "Home");
     expect(document.activeElement).toBe(buttonFor(INVOICE));
     expect(runButtons().filter((b) => b.tabIndex === 0)).toEqual([buttonFor(INVOICE)]);
+  });
+
+  it("Alt+arrows nudge the line in screen space and do not move focus", async () => {
+    const spies = mount([INVOICE, TOTAL]);
+    const el = buttonFor(INVOICE);
+    act(() => el.focus());
+    const right = new KeyboardEvent("keydown", { key: "ArrowRight", altKey: true, bubbles: true, cancelable: true });
+    act(() => {
+      el.dispatchEvent(right);
+    });
+    expect(right.defaultPrevented).toBe(true);
+    expect(spies.onMove).toHaveBeenCalledWith(INVOICE, { x: 1, y: 0 });
+    expect(document.activeElement).toBe(el);
+    await act(async () => {});
+    const down = new KeyboardEvent("keydown", { key: "ArrowDown", altKey: true, shiftKey: true, bubbles: true, cancelable: true });
+    act(() => {
+      el.dispatchEvent(down);
+    });
+    expect(spies.onMove).toHaveBeenLastCalledWith(INVOICE, { x: 0, y: -10 });
+    expect(el.getAttribute("aria-keyshortcuts")).toContain("Alt+ArrowRight");
+  });
+
+  it("dragging a line commits one move on release and suppresses the click", async () => {
+    const spies = mount([INVOICE, TOTAL]);
+    const el = layer();
+    const setCapture = vi.fn();
+    Object.defineProperty(el, "setPointerCapture", { value: setCapture });
+    Object.defineProperty(el, "releasePointerCapture", { value: vi.fn() });
+    Object.defineProperty(el, "hasPointerCapture", { value: () => true });
+    const pointer = (type: string, x: number, y: number) => {
+      const ev = new MouseEvent(type, { clientX: x, clientY: y, button: 0, bubbles: true, cancelable: true });
+      Object.defineProperty(ev, "pointerId", { value: 7 });
+      act(() => {
+        el.dispatchEvent(ev);
+      });
+    };
+    // Invoice's box is x 72..144, CSS y 83..95.
+    pointer("pointerdown", 80, 88);
+    expect(setCapture).toHaveBeenCalledWith(7);
+    pointer("pointermove", 90, 88);
+    pointer("pointerup", 90, 88);
+    expect(spies.onMove).toHaveBeenCalledWith(INVOICE, { x: 10, y: 0 });
+    await act(async () => {});
+    act(() => {
+      el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(spies.onEdit).not.toHaveBeenCalled();
   });
 
   it("a refused line is aria-disabled and described as Can't be changed: {short}", () => {
@@ -245,7 +298,7 @@ describe("SourceTextLayer", () => {
         createElement(SourceTextLayer, {
           runs: [SHARED], objects: [], fonts: fontsByKey([FONT]), layout: LAYOUT, pageNumber: 1, preview: null, duplicate: false,
           focusedId: null, focusTick: 0, editingId: null, popoverId, stage: null, inert: false,
-          onFocusedChange: () => {}, onEdit: vi.fn(), onExplain: vi.fn(), onRestore: vi.fn(), onLeave: vi.fn(),
+          onFocusedChange: () => {}, onEdit: vi.fn(), onExplain: vi.fn(), onRestore: vi.fn(), onMove: vi.fn(), onLeave: vi.fn(),
         });
       stage = document.createElement("div");
       host = document.createElement("div");

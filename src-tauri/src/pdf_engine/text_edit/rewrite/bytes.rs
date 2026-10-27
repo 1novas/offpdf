@@ -12,7 +12,7 @@ use super::layout::{Laid, Planned};
 use super::{problem, ExpectedRun, PagePlan, RunPlan, Splice, StyleTarget};
 use crate::pdf_engine::text_edit::content::PageContent;
 use crate::pdf_engine::text_edit::encode::{
-    check_replacement_grammar, hex_codes, needs_leading_space,
+    check_replacement_grammar, fmt_num, fmt_precise, hex_codes, needs_leading_space,
 };
 use crate::pdf_engine::text_edit::fonts::Code;
 use crate::pdf_engine::text_edit::lexer::{is_delimiter, is_whitespace};
@@ -146,7 +146,7 @@ fn primary_bytes(
 ) -> Result<(String, usize), EditProblem> {
     let internal = |what: &str| problem(P::EditVerifyFailed, what.to_string());
     let mut tokens = op_prefix(content, primary);
-    let fmt = |v: f64| crate::pdf_engine::text_edit::encode::fmt_num(v);
+    let fmt = fmt_num;
     if target.tc_changed {
         tokens.push(format!("{} Tc", fmt(target.tc)?));
     }
@@ -157,6 +157,31 @@ fn primary_bytes(
             fmt(rgb[1])?,
             fmt(rgb[2])?
         ));
+    }
+    let moved = laid.move_user != (0.0, 0.0);
+    let (moved_tm, restore_tm) = if moved {
+        let tm = |m: [f64; 6], x: f64, y: f64| -> Result<String, EditProblem> {
+            Ok(format!(
+                "{} {} {} {} {} {} Tm",
+                fmt_precise(m[0])?,
+                fmt_precise(m[1])?,
+                fmt_precise(m[2])?,
+                fmt_precise(m[3])?,
+                fmt_precise(x)?,
+                fmt_precise(y)?
+            ))
+        };
+        let m = primary.tm_before;
+        let tlm = primary.tlm_before;
+        (
+            Some(tm(m, m[4] + laid.move_text.0, m[5] + laid.move_text.1)?),
+            Some(tm(tlm, tlm[4], tlm[5])?),
+        )
+    } else {
+        (None, None)
+    };
+    if let Some(tm) = &moved_tm {
+        tokens.push(tm.clone());
     }
     let original_font: Vec<u8> = primary
         .before
@@ -211,7 +236,23 @@ fn primary_bytes(
             .ok_or_else(|| internal("no Tf to restore"))?;
         tokens.push(String::from_utf8_lossy(tf_op).into_owned());
     }
-    Ok((tokens.join(" "), seg_count))
+    if let Some(tm) = restore_tm {
+        // Put the line matrix back, then advance the text matrix to where the original show left
+        // it. A TJ moves Tm without moving Tlm, so following `T*`/`Td` content stays put.
+        tokens.push(tm);
+        let (tfs, th) = (primary.before.text.tfs, primary.before.text.th);
+        if tfs == 0.0 || th == 0.0 {
+            return Err(internal("zero size while restoring a moved line"));
+        }
+        let dx = primary.tm_after[4] - primary.tlm_before[4];
+        let dy = primary.tm_after[5] - primary.tlm_before[5];
+        if !dx.is_finite() || !dy.is_finite() || dy.abs() > 1e-9 {
+            return Err(internal("the line matrix cannot be restored with a TJ"));
+        }
+        let n = -dx * 1000.0 / (tfs * th);
+        tokens.push(format!("[<> {}] TJ", fmt(n)?));
+    }
+    Ok((tokens.join(" "), seg_count + usize::from(moved)))
 }
 
 /// The ops that put the fill back after the new `rg`: the verbatim colour-space and colour ops in
@@ -367,9 +408,13 @@ pub(super) fn run_plan(
         glyphs,
         prefix_glyphs: laid.prefix_glyphs,
         suffix_glyphs: laid.suffix_glyphs,
+        move_user: laid.move_user,
         shift_user: laid.shift_user,
         unshifted_from: laid.unshifted_from,
-        origin: run.origin,
+        origin: (
+            run.origin.0 + laid.move_user.0,
+            run.origin.1 + laid.move_user.1,
+        ),
         primary_pen_after: primary.pen_after,
         member_pen_after: records.iter().map(|r| r.pen_after).collect(),
         tfs: target.tfs,

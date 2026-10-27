@@ -293,6 +293,33 @@ describe("SourceTextEditor", () => {
     expect(props.onClose).toHaveBeenCalledWith({ focusRun: true, announce: "Change applied. 2.5 pt wider than before." });
   });
 
+  it("keeps a moved line's displacement when editing its text", async () => {
+    const move = { x: 20, y: -10 };
+    const movedRect = { x: 92, y: 687, w: 25.6, h: 12 };
+    const existing = makeSourceTextObject("e1", 0, movedRect, {
+      runId: RUN.id,
+      sourceFingerprint: "fp",
+      sourcePageIndex: 0,
+      originalText: "Hello",
+      text: "Hello",
+      style: {},
+      move,
+    });
+    const newRect = { x: 92, y: 687, w: 27.9, h: 12 };
+    const preview = answer(verdict({ deltaPt: 2.5, newRect, caretOffsets: [0, 7.6, 13.5, 16.3, 19, 25.4, 27.9] }));
+    const props = mount({ existing, requestPreview: vi.fn().mockResolvedValue(preview) });
+    type("Hello!");
+    press("Enter");
+    await act(async () => {});
+    expect(props.requestPreview).toHaveBeenCalledWith([
+      { runId: RUN.id, originalText: "Hello", text: "Hello!", style: {}, move },
+    ]);
+    expect(props.onApply).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "Hello!", style: {}, move, rect: newRect }),
+    );
+    expect(props.onClose).toHaveBeenCalledWith({ focusRun: true, announce: "Change applied. 2.5 pt wider than before." });
+  });
+
   it("commits under React.StrictMode too (the app's development mode mounts twice)", async () => {
     const preview = answer(verdict({ deltaPt: 1, newRect: RUN.rect, caretOffsets: [0, 7.6, 13.5, 16.3, 19, 25.4, 27.9] }));
     const props = mount({ requestPreview: vi.fn().mockResolvedValue(preview) }, true);

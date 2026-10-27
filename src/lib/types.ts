@@ -303,7 +303,14 @@ export interface PageText {
 }
 /** Only fields that differ from the run's current style. */
 export interface SourceTextStyle { sizePt?: number; face?: TextFace; fill?: string; letterSpacingPt?: number }
-export interface TextEditIn { runId: string; originalText: string; text: string; style: SourceTextStyle }
+export interface TextEditIn {
+  runId: string;
+  originalText: string;
+  text: string;
+  style: SourceTextStyle;
+  /** Unrotated user-space displacement of the line, omitted when it stays put. */
+  move?: TextVec;
+}
 export type TextStyleField = "size" | "face" | "colour";
 export interface TextEditVerdict {
   runId: string;

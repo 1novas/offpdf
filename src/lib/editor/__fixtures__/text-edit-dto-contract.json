@@ -197,6 +197,10 @@
     "id": "obj-7",
     "kind": "sourceText",
     "locked": true,
+    "move": {
+      "x": 12.5,
+      "y": -3.0
+    },
     "originalText": "Invoice 2026",
     "pageIndex": 2,
     "rect": {
@@ -214,6 +218,10 @@
     "text": "Invoice 2027"
   },
   "TextEditIn": {
+    "move": {
+      "x": 12.5,
+      "y": -3.0
+    },
     "originalText": "Invoice 2026",
     "runId": "t1:0123456789abcdef-4d2:0:120-161",
     "style": {

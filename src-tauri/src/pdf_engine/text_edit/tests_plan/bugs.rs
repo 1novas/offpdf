@@ -151,6 +151,7 @@ fn b10_a_rewrite_is_never_skipped_silently() {
         original_text: "Hello".into(),
         text: "Help".into(),
         style: style(),
+        move_by: None,
     };
     let out = plan(&c, &m, &[e, edit(&m, "After", "Later", style())]);
     assert_eq!(out.verdicts.len(), 2, "B10 one verdict per edit");

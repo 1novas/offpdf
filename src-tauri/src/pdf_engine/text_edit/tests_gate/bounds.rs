@@ -363,6 +363,7 @@ fn failures_while_cancelled_report_cancelled() {
         original_text: run.text.clone(),
         text: "Invoice 2027".into(),
         style: SourceTextStyleIn::default(),
+        move_by: None,
     };
     let cache = cache_dir_for(h.dir.dir(), "cancelled");
     let model = build_page_model(&h.ctx, h.page, None).expect("model");

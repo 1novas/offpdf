@@ -102,6 +102,7 @@ pub(crate) fn plan_of(ctx: &SnapshotContext, page: u32, edits: &[Ed<'_>]) -> (Pa
                 original_text: e.old.to_string(),
                 text: e.new.to_string(),
                 style: e.style.clone(),
+                move_by: None,
             }
         })
         .collect();

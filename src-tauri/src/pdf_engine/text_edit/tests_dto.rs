@@ -225,6 +225,7 @@ fn text_edit_in_sample() -> Value {
         "originalText": "Invoice 2026",
         "text": "Invoice 2027",
         "style": { "sizePt": 12.5, "face": "boldItalic", "fill": "#c71c1c", "letterSpacingPt": 0.5 },
+        "move": { "x": 12.5, "y": -3.0 },
     })
 }
 
@@ -241,6 +242,7 @@ fn source_text_export_sample() -> Value {
         "originalText": "Invoice 2026",
         "text": "Invoice 2027",
         "style": { "fill": "#c71c1c" },
+        "move": { "x": 12.5, "y": -3.0 },
     })
 }
 
@@ -295,6 +297,10 @@ fn dto_02_text_edit_in_and_source_text_export_deserialize() {
     assert_eq!(edit.style.face, Some(Face::BoldItalic));
     assert_eq!(edit.style.size_pt, Some(12.5));
     assert_eq!(edit.style.letter_spacing_pt, Some(0.5));
+    assert_eq!(
+        edit.move_by,
+        Some(crate::pdf_engine::text_edit::rewrite::MoveIn { x: 12.5, y: -3.0 })
+    );
     // `style` may be omitted (an unstyled change).
     let bare: TextEditIn = serde_json::from_value(json!({
         "runId": "r", "originalText": "a", "text": "b"
@@ -316,6 +322,7 @@ fn dto_02_text_edit_in_and_source_text_export_deserialize() {
             text,
             style,
             rect,
+            move_by,
         }) => {
             assert_eq!((*page_index, *source_page_index), (2, 0));
             assert_eq!(run_id, "t1:0123456789abcdef-4d2:0:120-161");
@@ -326,6 +333,10 @@ fn dto_02_text_edit_in_and_source_text_export_deserialize() {
             );
             assert_eq!(style.fill.as_deref(), Some("#c71c1c"));
             assert_eq!((rect.x, rect.w), (72.0, 61.25));
+            assert_eq!(
+                *move_by,
+                Some(crate::pdf_engine::text_edit::rewrite::MoveIn { x: 12.5, y: -3.0 })
+            );
         }
         other => panic!("DTO-02: not a sourceText object: {other:?}"),
     }
@@ -456,6 +467,7 @@ fn letter_spacing_sent_back_unchanged_is_a_no_op() {
             letter_spacing_pt: Some(metrics.letter_spacing_pt),
             ..Default::default()
         },
+        move_by: None,
     };
     let out = plan_page(&ctx, &model, &[edit]).expect("plan");
     assert!(

@@ -3,14 +3,14 @@
 //! available (B8, B9), and compute the written targets (`Tf'`, `Tc'`, colour), each read back from
 //! the number that will be written.
 
-use super::{bad_edit, problem, SourceTextStyleIn, StyleTarget, TextEditIn};
+use super::{bad_edit, problem, MoveIn, SourceTextStyleIn, StyleTarget, TextEditIn};
 use crate::error::AppError;
 use crate::pdf_engine::text_edit::encode::num;
 use crate::pdf_engine::text_edit::fonts::{face_surface, FontModel, TypingSurface};
 use crate::pdf_engine::text_edit::lexer::{lex_content, LexLimits, Operand, Operator};
 use crate::pdf_engine::text_edit::limits::{
-    EDIT_TEXT_CHARS_MAX, LETTER_SPACING_MAX_PT, LETTER_SPACING_MIN_PT, SIZE_MAX_PT, SIZE_MIN_PT,
-    STYLE_EPSILON,
+    EDIT_TEXT_CHARS_MAX, LETTER_SPACING_MAX_PT, LETTER_SPACING_MIN_PT, MOVE_MAX_PT, SIZE_MAX_PT,
+    SIZE_MIN_PT, STYLE_EPSILON,
 };
 use crate::pdf_engine::text_edit::reasons::{EditProblem, EditProblemCode as P, StyleField};
 use crate::pdf_engine::text_edit::runs::{PageModel, SpaceMode, TextRun};
@@ -88,6 +88,23 @@ pub(super) fn validate_style(style: &SourceTextStyleIn) -> Result<(), AppError> 
         if parse_hex(fill).is_none() {
             return Err(bad_edit("fill is not #rrggbb"));
         }
+    }
+    Ok(())
+}
+
+/// Step 2 (move half): a finite, bounded user-space delta.
+pub(super) fn validate_move(move_by: Option<MoveIn>) -> Result<(), AppError> {
+    let Some(m) = move_by else {
+        return Ok(());
+    };
+    if !m.x.is_finite() || !m.y.is_finite() {
+        return Err(bad_edit("move is not finite"));
+    }
+    if m.x.abs() > MOVE_MAX_PT || m.y.abs() > MOVE_MAX_PT {
+        return Err(bad_edit(&format!(
+            "move ({}, {}) outside ±{MOVE_MAX_PT}",
+            m.x, m.y
+        )));
     }
     Ok(())
 }

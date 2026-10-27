@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fontsByKey } from "@/lib/editor";
 import { UI, fillCopy } from "@/lib/editor/sourceTextCopy";
-import type { PageText, TextFont, TextPreview, TextRun } from "@/lib/types";
+import type { PageText, TextEditIn, TextFont, TextPreview, TextRun } from "@/lib/types";
 import type { PageLayout } from "../PageSurface";
 import type { EditSession } from "../useEditSession";
 import {
@@ -214,6 +214,75 @@ describe("SourceTextMode", () => {
     expect(document.activeElement).toBe(lineButton("Hello"));
     expect(host.querySelector(".sr-only")!.textContent).toContain("Change applied. 1.25 pt wider than before.");
     expect(guardRef.current?.isEditing()).toBe(false);
+  });
+
+  it("Alt+Arrow previews the real result and commits one move with one history step", async () => {
+    const answer: TextPreview = {
+      pagePdf: "UERG",
+      verdicts: [{ runId: "r1", ok: true, code: null, chars: [], reason: null, face: null, field: null, detail: null, deltaPt: 0, newRect: { ...HELLO.rect, x: 73 }, caretOffsets: HELLO.caretOffsets }],
+      pageProblem: null,
+      warnings: [],
+    };
+    const request = vi.fn().mockResolvedValue(answer);
+    const seed = vi.fn();
+    const { session } = mount(model({ preview: preview({ request, seed }) }));
+    act(() => {
+      lineButton("Hello").dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", altKey: true, bubbles: true, cancelable: true }));
+    });
+    await act(async () => {});
+    expect(request).toHaveBeenCalledTimes(1);
+    const edits = request.mock.calls[0][0] as TextEditIn[];
+    expect(edits).toHaveLength(1);
+    expect(edits[0]).toMatchObject({ runId: "r1", originalText: "Hello", text: "Hello", move: { x: 1, y: 0 } });
+    expect(session.setSourceText).toHaveBeenCalledTimes(1);
+    expect(session.setSourceText).toHaveBeenCalledWith(expect.objectContaining({
+      runId: "r1",
+      pageIndex: 0,
+      text: "Hello",
+      move: { x: 1, y: 0 },
+      rect: { ...HELLO.rect, x: 73 },
+    }));
+    expect(seed).toHaveBeenCalledTimes(1);
+    expect(host.querySelector(".sr-only")!.textContent).toContain("Line moved by 1.0 × 0.0 points.");
+  });
+
+  it("a stale source refuses the move without committing", async () => {
+    const stale = {
+      code: "STALE",
+      title: "The PDF changed on disk",
+      message: "The PDF changed on disk.",
+      suggestion: "Remove these text changes and make them again.",
+    };
+    const reportFault = vi.fn();
+    const request = vi.fn().mockRejectedValue(stale);
+    const { session } = mount(model({ preview: preview({ request }), reportFault }));
+    act(() => {
+      lineButton("Hello").dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowRight", altKey: true, bubbles: true, cancelable: true }),
+      );
+    });
+    await act(async () => {});
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(session.setSourceText).not.toHaveBeenCalled();
+    expect(reportFault).toHaveBeenCalledWith(stale);
+  });
+
+  it("a refused move is not committed and the announcement says why", async () => {
+    const answer: TextPreview = {
+      pagePdf: null,
+      verdicts: [{ runId: "r1", ok: false, code: "TEXT_OUTSIDE_VISIBLE_AREA", chars: [], reason: null, face: null, field: null, detail: "moved box x=1612 y=697 w=30 h=12", deltaPt: 0, newRect: null, caretOffsets: null }],
+      pageProblem: null,
+      warnings: [],
+    };
+    const request = vi.fn().mockResolvedValue(answer);
+    const { session } = mount(model({ preview: preview({ request }) }));
+    act(() => {
+      lineButton("Hello").dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", altKey: true, bubbles: true, cancelable: true }));
+    });
+    await act(async () => {});
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(session.setSourceText).not.toHaveBeenCalled();
+    expect(host.querySelector(".sr-only")!.textContent).toContain("edge of the visible page");
   });
 
   it("the guard keeps a blocked edit open (page or tool change waits)", async () => {

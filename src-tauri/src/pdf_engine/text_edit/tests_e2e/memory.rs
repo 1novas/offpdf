@@ -117,6 +117,7 @@ fn hello_to_help(model: &PageModel) -> TextEditIn {
         original_text: "Hello".into(),
         text: "Help".into(),
         style: SourceTextStyleIn::default(),
+        move_by: None,
     }
 }
 

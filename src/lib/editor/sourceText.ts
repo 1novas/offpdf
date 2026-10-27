@@ -246,9 +246,40 @@ export function normaliseStyle(run: TextRun, style: SourceTextStyle): SourceText
   return out;
 }
 
-/** Same text (after NFC) and no style change: no object, no bytes. */
-export function isNoOpEdit(run: TextRun, text: string, style: SourceTextStyle): boolean {
-  return normaliseTyped(text) === run.text && Object.keys(normaliseStyle(run, style)).length === 0;
+/** A move this small is the line staying put (screen rounding, not an edit). */
+export const MOVE_EPSILON_PT = 0.01;
+
+/** A finite, non-zero move; `undefined` when it is a no-op. */
+export function normaliseMove(move: TextVec | undefined): TextVec | undefined {
+  if (!move || !Number.isFinite(move.x) || !Number.isFinite(move.y)) return undefined;
+  return Math.abs(move.x) <= MOVE_EPSILON_PT && Math.abs(move.y) <= MOVE_EPSILON_PT
+    ? undefined
+    : { x: move.x, y: move.y };
+}
+
+/** The move a drag/nudge adds to the line's current displacement. */
+export function addMove(a: TextVec | undefined, b: TextVec): TextVec {
+  return normaliseMove({ x: (a?.x ?? 0) + b.x, y: (a?.y ?? 0) + b.y }) ?? { x: 0, y: 0 };
+}
+
+/** A removed line draws nothing, so its move is ignored (Rust does the same). */
+export function textMove(text: string, move: TextVec | undefined): TextVec | undefined {
+  return text === "" ? undefined : normaliseMove(move);
+}
+
+/** Same text (after NFC), no style change and no move: no object, no bytes. */
+export function isNoOpEdit(
+  run: TextRun,
+  text: string,
+  style: SourceTextStyle,
+  move?: TextVec,
+): boolean {
+  const typed = normaliseTyped(text);
+  return (
+    typed === run.text &&
+    Object.keys(normaliseStyle(run, style)).length === 0 &&
+    textMove(typed, move) === undefined
+  );
 }
 
 function verdict(run: TextRun, code: TextEditProblemCode, extra: Partial<TextEditVerdict> = {}): TextEditVerdict {
@@ -282,6 +313,7 @@ export function blockingVerdict(
   fonts: Map<string, TextFont>,
   text: string,
   style: SourceTextStyle,
+  move?: TextVec,
 ): TextEditVerdict | null {
   if (!run.editable || !run.metrics || !run.style) {
     return verdict(run, "TEXT_EDIT_REFUSED", { reason: run.reason });
@@ -302,8 +334,16 @@ export function blockingVerdict(
   const missing = missingChars(run, fonts, typed, s.face);
   if (missing.length > 0) return verdict(run, "GLYPH_MISSING", { chars: missing });
   if (spaceProblem(run, typed)) return verdict(run, "SPACE_NOT_WRITABLE");
-  const limit = Math.max(run.metrics.visibleExtent, run.metrics.originalWidth) + FIT_TOL_PT;
-  if (estimatedExtent(run, fonts, typed, s) > limit) return verdict(run, "TEXT_OUTSIDE_VISIBLE_AREA");
+  // A moved line has less room ahead of it when it moved along its baseline. The local guide
+  // only mirrors the visible extent; Rust checks the full 2D box (and the clip) at preview.
+  const along = move ? move.x * run.dir.x + move.y * run.dir.y : 0;
+  // Keep the old allowance for a line that already reaches past the visible extent, so an
+  // unrelated text edit is not blocked; Rust still checks the real 2D box at preview.
+  const limit =
+    Math.max(run.metrics.visibleExtent - along, run.metrics.originalWidth, 0) + FIT_TOL_PT;
+  if (typed !== "" && estimatedExtent(run, fonts, typed, s) > limit) {
+    return verdict(run, "TEXT_OUTSIDE_VISIBLE_AREA");
+  }
   return null;
 }
 
@@ -324,10 +364,16 @@ export function overlapsNext(run: TextRun, fonts: Map<string, TextFont>, text: s
   return estimatedExtent(run, fonts, text, style) > next + OVERLAP_WARN_TOL_PT;
 }
 
-/** Index (0…chars) of the caret boundary nearest to `user` (unrotated user space). */
-export function caretIndexAt(run: TextRun, user: TextVec, offsets: number[] = run.caretOffsets): number {
+/** Index (0…chars) of the caret boundary nearest to `user` (unrotated user space).
+ * `origin` is the line's current origin (a moved line's origin is not `run.origin`). */
+export function caretIndexAt(
+  run: TextRun,
+  user: TextVec,
+  offsets: number[] = run.caretOffsets,
+  origin: TextVec = run.origin,
+): number {
   if (offsets.length === 0) return 0;
-  const along = (user.x - run.origin.x) * run.dir.x + (user.y - run.origin.y) * run.dir.y;
+  const along = (user.x - origin.x) * run.dir.x + (user.y - origin.y) * run.dir.y;
   if (!Number.isFinite(along)) return 0;
   let best = 0;
   for (let i = 1; i < offsets.length; i++) {
@@ -343,7 +389,9 @@ export function editedGeometry(
   obj: SourceTextObject,
   current: TextEditVerdict | null,
   fonts: Map<string, TextFont>,
-): { rect: TextRect; caretOffsets: number[] } {
+): { rect: TextRect; caretOffsets: number[]; origin: TextVec } {
+  const move = textMove(obj.text, obj.move);
+  const origin = { x: run.origin.x + (move?.x ?? 0), y: run.origin.y + (move?.y ?? 0) };
   const length = chars(obj.text).length + 1;
   if (
     current &&
@@ -353,9 +401,13 @@ export function editedGeometry(
     current.caretOffsets &&
     current.caretOffsets.length === length
   ) {
-    return { rect: { ...current.newRect }, caretOffsets: current.caretOffsets.slice() };
+    return { rect: { ...current.newRect }, caretOffsets: current.caretOffsets.slice(), origin };
   }
-  return { rect: { ...obj.rect }, caretOffsets: estimateCaretOffsets(run, fonts, obj.text, obj.style) };
+  return {
+    rect: { ...obj.rect },
+    caretOffsets: estimateCaretOffsets(run, fonts, obj.text, obj.style),
+    origin,
+  };
 }
 
 /** The sentence for a failed verdict (§D.11.4); "" when the verdict is ok. Pass
@@ -461,13 +513,23 @@ export function textStampGeometry(run: TextRun, geometry: PageGeometry): TextSta
 
 /** The IPC shape of one committed change. */
 export function toTextEditIn(obj: SourceTextObject): TextEditIn {
-  return { runId: obj.runId, originalText: obj.originalText, text: obj.text, style: compactSourceTextStyle(obj.style) };
+  const move = textMove(obj.text, obj.move);
+  return {
+    runId: obj.runId,
+    originalText: obj.originalText,
+    text: obj.text,
+    style: compactSourceTextStyle(obj.style),
+    ...(move ? { move } : {}),
+  };
 }
 
 /** Order-independent key of a page's edits (preview cache key). */
 export function editsSignature(objs: SourceTextObject[]): string {
   const items = objs
-    .map((o) => ({ runId: o.runId, text: o.text, style: compactSourceTextStyle(o.style) }))
+    .map((o) => {
+      const move = textMove(o.text, o.move);
+      return { runId: o.runId, text: o.text, style: compactSourceTextStyle(o.style), move: move ?? null };
+    })
     .sort((a, b) => (a.runId < b.runId ? -1 : a.runId > b.runId ? 1 : 0));
   return JSON.stringify(items);
 }

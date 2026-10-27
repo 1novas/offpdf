@@ -51,16 +51,19 @@ describe("sourceText serialisation", () => {
       originalText: "Hello",
       text: "Hallo",
       style: { sizePt: 13, fill: "#c71c1c" },
+      move: { x: 12.5, y: -3 },
     });
 
-  it("deep-clones the style", () => {
+  it("deep-clones the style and the move", () => {
     const o = change();
     const c = cloneObject(o);
     if (c.kind !== "sourceText") throw new Error("expected sourceText");
     c.style.sizePt = 99;
     c.rect.x = 0;
+    c.move!.x = 0;
     expect(o.style.sizePt).toBe(13);
     expect(o.rect.x).toBe(72);
+    expect(o.move).toEqual({ x: 12.5, y: -3 });
   });
 
   it("is never offset", () => {
@@ -87,6 +90,7 @@ describe("sourceText serialisation", () => {
         "originalText",
         "text",
         "style",
+        "move",
       ].sort(),
     );
     expect(json).toEqual({
@@ -101,6 +105,7 @@ describe("sourceText serialisation", () => {
       originalText: "Hello",
       text: "Hallo",
       style: { sizePt: 13 },
+      move: { x: 12.5, y: -3 },
     });
     expect(Object.keys((out.objects[0] as { style: object }).style)).toEqual(["sizePt"]);
   });
