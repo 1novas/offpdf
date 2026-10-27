@@ -88,7 +88,12 @@ fn plan_33_grammar_rejects_everything_but_the_replacement_operators() {
         check_replacement_grammar(b"0 g 0 0 0 1 k 1 g [<>] TJ", 1),
         Ok(())
     );
-    let bad: [(&str, &str); 14] = [
+    assert_eq!(
+        check_replacement_grammar(b"1 0 0 1 0 0 Tm [<41>] TJ", 1),
+        Ok(()),
+        "PLAN-33 a move's Tm is a replacement operator"
+    );
+    let bad: [(&str, &str); 13] = [
         ("q [<41>] TJ Q", "q"),
         ("0 0 9 9 re f [<41>] TJ", "re"),
         ("/Im0 Do [<41>] TJ", "Do"),
@@ -97,7 +102,6 @@ fn plan_33_grammar_rejects_everything_but_the_replacement_operators() {
         ("50 Tz [<41>] TJ", "Tz"),
         ("3 Ts [<41>] TJ", "Ts"),
         ("BT [<41>] TJ ET", "BT"),
-        ("1 0 0 1 0 0 Tm [<41>] TJ", "Tm"),
         ("5 0 Td [<41>] TJ", "Td"),
         ("/P BMC [<41>] TJ EMC", "BMC"),
         ("/GS1 gs [<41>] TJ", "gs"),

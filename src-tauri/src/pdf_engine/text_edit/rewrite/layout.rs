@@ -8,14 +8,17 @@ use super::masks::{stroke_pad, MaskFonts};
 use super::{problem, NewUnit, StyleTarget};
 use crate::pdf_engine::text_edit::encode::num;
 use crate::pdf_engine::text_edit::fonts::{Code, FontModel, TypingSurface};
-use crate::pdf_engine::text_edit::geometry::{bbox_of, Matrix};
+use crate::pdf_engine::text_edit::geometry::{bbox_of, contains, intersect, Matrix};
 use crate::pdf_engine::text_edit::lexer::Span;
 use crate::pdf_engine::text_edit::limits::{
-    COLUMN_GAP_EM, DRIFT_TOLERANCE_PT, F32_DRIFT_GUARD_PT, NEGLIGIBLE_KERN, OVERLAP_WARN_TOL_PT,
-    SYNTH_SPACE_EM,
+    CLIP_CONTAIN_TOL_PT, COLUMN_GAP_EM, DRIFT_TOLERANCE_PT, F32_DRIFT_GUARD_PT, NEGLIGIBLE_KERN,
+    OVERLAP_WARN_TOL_PT, SYNTH_SPACE_EM,
 };
-use crate::pdf_engine::text_edit::reasons::{EditProblem, EditProblemCode as P, TextWarningCode};
+use crate::pdf_engine::text_edit::reasons::{
+    EditProblem, EditProblemCode as P, TextReason, TextWarningCode,
+};
 use crate::pdf_engine::text_edit::runs::{PageModel, TextRun, Unit};
+use crate::pdf_engine::text_edit::state::ClipState;
 use crate::pdf_engine::text_edit::verify::{decoded_text, TextItem};
 use crate::pdf_engine::text_edit::walker::ShowRecord;
 use std::sync::Arc;
@@ -65,6 +68,10 @@ pub(crate) struct Laid {
     pub glyph_origins: Vec<(f64, f64)>,
     pub prefix_glyphs: usize,
     pub suffix_glyphs: usize,
+    /// The requested user-space displacement (zero when the line is not moved).
+    pub move_user: (f64, f64),
+    /// The same displacement in text space (added to the show op's `Tm` translation).
+    pub move_text: (f64, f64),
     pub shift_user: (f64, f64),
     pub unshifted_from: Option<usize>,
     pub delta_pt: f64,
@@ -229,6 +236,18 @@ fn grow(b: [f64; 4], pad: f64) -> [f64; 4] {
     [b[0] - pad, b[1] - pad, b[2] + pad, b[3] + pad]
 }
 
+/// A user-space delta in the text space of the linear map `m`.
+fn text_delta(m: &Matrix, d: (f64, f64)) -> Option<(f64, f64)> {
+    let (a, b, c, dd) = (m[0], m[1], m[2], m[3]);
+    let det = a * dd - b * c;
+    if !det.is_finite() || det.abs() < 1e-12 {
+        return None;
+    }
+    let tx = (dd * d.0 - c * d.1) / det;
+    let ty = (-b * d.0 + a * d.1) / det;
+    (tx.is_finite() && ty.is_finite()).then_some((tx, ty))
+}
+
 /// The glyph-space → user linear map of `rec` scaled to size `tf`.
 fn scaled_linear(rec: &ShowRecord, tf: f64) -> Matrix {
     let t = rec.text_to_user;
@@ -312,6 +331,7 @@ pub(super) fn lay_out(
     surface: &TypingSurface,
     target: &StyleTarget,
     new_units: &[(NewUnit, Region)],
+    move_user: (f64, f64),
 ) -> Result<Laid, EditProblem> {
     let primary =
         record(model, run, 0).ok_or_else(|| problem(P::EditVerifyFailed, "run without members"))?;
@@ -389,10 +409,23 @@ pub(super) fn lay_out(
             absorbed_numbers.push(Some(s));
         }
     }
-    // Glyph expectations.
-    let origin = run.origin;
-    let step = (run.dir.0 * ttux, run.dir.1 * ttux);
+    // Glyph expectations. A move shifts every new glyph origin (and the `Tm` written for the
+    // show op) by the requested user-space delta. A `Tm` translation is in text space before the
+    // CTM, not in glyph space, so only the CTM maps it to user space; `Tfs` and `Tm`'s linear
+    // part must not scale it. This also keeps a size change and a move in one edit exact.
     let l_new = scaled_linear(primary, tf);
+    let move_text = if move_user == (0.0, 0.0) {
+        (0.0, 0.0)
+    } else {
+        text_delta(&primary.before.ctm, move_user).ok_or_else(|| {
+            problem(
+                P::EditVerifyFailed,
+                "the page CTM is not invertible for a move",
+            )
+        })?
+    };
+    let origin = (run.origin.0 + move_user.0, run.origin.1 + move_user.1);
+    let step = (run.dir.0 * ttux, run.dir.1 * ttux);
     let mut glyph_origins = Vec::new();
     let mut prefix_glyphs = 0usize;
     let mut suffix_glyphs = 0usize;
@@ -443,7 +476,10 @@ pub(super) fn lay_out(
                     if let Some((_, member, gi)) = kept {
                         if let Some(g) = record(model, run, *member).and_then(|r| r.glyphs.get(*gi))
                         {
-                            shift_user = Some((o.0 - g.origin.0, o.1 - g.origin.1));
+                            shift_user = Some((
+                                o.0 - move_user.0 - g.origin.0,
+                                o.1 - move_user.1 - g.origin.1,
+                            ));
                         }
                     }
                 }
@@ -484,8 +520,42 @@ pub(super) fn lay_out(
     }
     let rect = bbox_of(&ink).unwrap_or([origin.0, origin.1, origin.0, origin.1]);
     let new_rect = [rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1]];
-    // Fit (§A.8).
-    if new_extent > run.visible_extent.max(run.original_extent) + DRIFT_TOLERANCE_PT {
+    // A moved line must stay on the visible page and inside its rectangular clip. Its ink box is
+    // checked in 2D, which covers both the move and any text growth in the same edit.
+    if move_user != (0.0, 0.0) {
+        let visible = model.walk.geometry.visible;
+        let clip = match &primary.before.clip {
+            ClipState::None => None,
+            ClipState::Rect(r) => Some(*r),
+            ClipState::Complex => {
+                let mut p = problem(
+                    P::TextEditRefused,
+                    "the line is clipped by a non-rectangular area",
+                );
+                p.reason = Some(TextReason::Clipped);
+                return Err(p);
+            }
+        };
+        // The page edge is exact; a rectangular clip gets the same numeric tolerance the walker
+        // uses when it decides a line is clipped.
+        let inside = contains(visible, rect, DRIFT_TOLERANCE_PT)
+            && clip.is_none_or(|r| contains(r, rect, CLIP_CONTAIN_TOL_PT));
+        if !inside {
+            let allowed = clip.map_or(visible, |r| intersect(visible, r));
+            return Err(problem(
+                P::TextOutsideVisibleArea,
+                format!(
+                    "moved line [{:.3}, {:.3}, {:.3}, {:.3}] outside visible [{:.3}, {:.3}, {:.3}, {:.3}]",
+                    rect[0], rect[1], rect[2], rect[3], allowed[0], allowed[1], allowed[2], allowed[3]
+                ),
+            ));
+        }
+    }
+    // Fit (§A.8). A moved line's 2D box is authoritative; the old origin's extent limit would
+    // wrongly refuse a line moved left (and miss one moved right).
+    if move_user == (0.0, 0.0)
+        && new_extent > run.visible_extent.max(run.original_extent) + DRIFT_TOLERANCE_PT
+    {
         return Err(problem(
             P::TextOutsideVisibleArea,
             format!(
@@ -520,6 +590,8 @@ pub(super) fn lay_out(
         glyph_origins,
         prefix_glyphs,
         suffix_glyphs,
+        move_user,
+        move_text,
         shift_user: shift_user.unwrap_or((0.0, 0.0)),
         unshifted_from,
         delta_pt: new_extent - run.original_extent,

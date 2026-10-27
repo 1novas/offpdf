@@ -177,7 +177,13 @@ const DTOS: { name: string; kinds: Record<string, string>; is: (o: Obj) => boole
   { name: "VecDto", kinds: kinds<TextVec>({ x: "number", y: "number" }), is: (o) => has(o, "x", "y") && !has(o, "w") },
   {
     name: "TextEditIn",
-    kinds: kinds<TextEditIn>({ runId: "string", originalText: "string", text: "string", style: "object" }),
+    kinds: kinds<TextEditIn>({
+      runId: "string",
+      originalText: "string",
+      text: "string",
+      style: "object",
+      move: "object",
+    }),
     is: (o) => has(o, "originalText", "runId") && !has(o, "kind"),
   },
 ];
@@ -237,6 +243,17 @@ describe.skipIf(!fixtureExists)("sourceTextContract: TS types == text-edit-dto-c
     for (const code of codes) expect(code).toMatch(/^[A-Z][A-Z0-9_]*$/);
   });
 
+  it("DTO move is a TextVec with exactly x and y", () => {
+    const moves = all.filter((o) => has(o, "move"));
+    expect(moves.length).toBeGreaterThan(0);
+    for (const o of moves) {
+      const move = o.move as Obj;
+      expect(Object.keys(move).sort()).toEqual(["x", "y"]);
+      expect(typeof move.x).toBe("number");
+      expect(typeof move.y).toBe("number");
+    }
+  });
+
   it("enum-like strings use the TS spellings", () => {
     for (const o of all) {
       if (has(o, "spaceMode")) expect(["glyph", "kern"]).toContain(o.spaceMode);
@@ -259,6 +276,7 @@ describe.skipIf(!fixtureExists)("sourceTextContract: TS types == text-edit-dto-c
       originalText: "a",
       text: "b",
       style: { sizePt: 12, face: "bold", fill: "#000000", letterSpacingPt: 0.5 },
+      move: { x: 12.5, y: -3 },
     });
     const ts = toExportDocument({ version: 1, objects: [obj], selectedIds: [] }).objects[0] as unknown as Obj;
     // Rust ignores `id` and `locked`, so the sample may omit them; nothing else may differ.

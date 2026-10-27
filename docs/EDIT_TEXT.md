@@ -34,6 +34,9 @@ painting new text on top of old text.
 
 - change the words of one line, shorter, longer or empty (an empty line is
   removed, and the text after it stays where it was);
+- move that line on its page: drag it, or nudge it with **Alt+Arrow** (1 pt;
+  **Shift+Alt+Arrow** for 10 pt), and the moved line is still real, searchable
+  source text with its own font;
 - keep the unchanged letters of the line exactly as they were (same glyph codes
   and the same kerning between them);
 - keep everything else on the page where it was: every other glyph is checked to
@@ -52,7 +55,8 @@ painting new text on top of old text.
 - flattens or rasterises a page, or re-saves a page through a PDF library;
 - substitutes or embeds a font, or draws a letter the embedded font does not
   contain;
-- reflows a paragraph, wraps a line, or moves other lines;
+- reflows a paragraph, wraps a line, or moves other lines (a move applies to the
+  selected line only; moving it to another page is not offered);
 - silently skips a change: a change that cannot be proven is refused, and Save
   publishes nothing.
 
@@ -60,8 +64,11 @@ What you see while editing: dashed outline = editable, dotted = can't be changed
 (text inside reusable blocks included), green outline with a dot = edited. The
 line editor shows your draft in a similar serif, sans or monospace system font
 (from the font's flags, else its name); after **Done** the preview shows the
-document's own font. **Show original** (**O**) compares the original page with
-that preview while one is on screen. **Save** with a line still open finishes it
+document's own font. Drag an editable line to move it, or press **Alt+Arrow**
+(**Shift+Alt+Arrow** for 10 pt) while it has focus; the preview shows the saved
+position, one release or nudge is one undo step, and a move that would leave the
+visible page is refused with the reason. **Show original** (**O**) compares the
+original page with that preview while one is on screen. **Save** with a line still open finishes it
 first; a draft that can't be applied stays open and nothing is saved. **Add
 text** places a new text box and never replaces existing text; **Add text here**
 in the reason dialog puts one over the line (an upright one-line box at the
@@ -82,8 +89,9 @@ document already uses, and a file with any damaged JPEG image is refused with
 | Joining | Same baseline (0.01 pt) and direction, same graphics and text state except the font, the same marked-content context, the same font or a sibling face of it, a gap within ±0.3 em, nothing painted in between, at most 256 pieces. Gaps between joined pieces become `TJ` kerns, so unchanged glyphs keep their positions. |
 | Per-glyph pages | After joining, if a page has at least 12 editable lines and 80 % or more of them are one character long, those one-character lines are refused (`PER_GLYPH_TEXT`). |
 | Lines | Single line. No reflow, wrapping or multi-line editing. Lines that are only spaces are not offered. |
-| Position | The new text starts where the old text started. The pen after the line ends where it ended before (±0.01 pt). |
-| No-op | Text equal to the current text with no style change writes nothing. |
+| Position | Without a move, the new text starts where the old text started. With a move, it starts at the source start plus the user-space displacement; the pen after the line ends where it ended before (±0.01 pt), and the line matrix is restored so following text and `T*` do not shift. |
+| Move | One line, same page, in unrotated PDF user space. The moved ink box must stay inside the visible page (CropBox and `/Rotate` 0/90/180/270 included) and inside a rectangular clip; otherwise it is refused (`TEXT_OUTSIDE_VISIBLE_AREA`, or `TEXT_EDIT_REFUSED` + `CLIPPED` for a non-rectangular clip). No cross-page moves, paragraph reflow or Form XObject text. |
+| No-op | Text equal to the current text with no style change and no move writes nothing. A move within 0.01 pt of the source position is no move. |
 
 ### Fonts
 
@@ -404,9 +412,20 @@ first one draws the whole new line and each other piece becomes `[<> n] TJ`,
 which draws nothing and keeps that piece's original pen travel
 (`n = −advance × 1000 / Tf`).
 
-**Replacement grammar.** A replacement may contain only `Tf Tc Tw T* TJ`, the
+**Move.** A move adds a user-space displacement to the line. Before the line's
+show operator the planner writes a `Tm` with the line's own linear matrix and
+the translated position; after the line it writes the source line matrix
+(`tlm_before`) and one empty `TJ` that advances the text matrix to exactly where
+the source show left it. The line matrix is therefore the source one for a
+following `T*`/`Td`, and the pen and state after the line match the source. The
+`Tm` operands use 12 decimals so the restore passes the strict matrix check; the
+line keeps its `Tf`, glyph codes, kerning and colour. The frontend converts a
+screen drag or nudge into unrotated PDF user space, so the move follows the
+page's `/Rotate` and CropBox.
+
+**Replacement grammar.** A replacement may contain only `Tf Tc Tw T* Tm TJ`, the
 verbatim restore operators (`g rg k cs sc scn`) and the new `rg`. It never
-contains `q Q BT ET cm Tm Td TD Tz Ts Tr gs`, paths, images or marked content.
+contains `q Q BT ET cm Td TD Tz Ts Tr gs`, paths, images or marked content.
 This is checked before any file is written and again on the re-read.
 
 **Why qpdf writes.** lopdf 0.34's incremental writer would add a second header
@@ -434,7 +453,7 @@ refusals (`read_verification_snapshot`).
 | A1 engines agree | lopdf and qpdf list the same pages and `/Contents` ids; same page count | lopdf misreading qpdf's output; dropped or duplicated pages |
 | A2 whole graph | Every object reachable from `/Root` and `/Info` equals qpdf's input, except the edited content streams, which decode to exactly the expected parts. Object ids are ignored; filtered streams are compared raw. | collateral damage anywhere: other pages, fonts and `/Widths`, resources, `/Annots`, boxes and `/Rotate`, page order, catalog (layers, forms, names, open action, outlines), added content streams or Form XObjects, raster replacements, shared-stream changes |
 | A3 edited parts | Same part count; each part decodes to its expected bytes; the original bytes are not attached anywhere on the page | off-by-one splices, the wrong page, re-encoded content, the old stream re-attached |
-| A4 re-walk | Every unedited glyph keeps its codes, font, text and state, and stays within 0.01 pt; every paint keeps its state; the edited line has exactly the planned glyphs, origin, size, spacing, colour and pen; the state after the line equals the original | wrong compensation, state leaks (`Tc`, `Tz`, colour, line width, …), missing glyphs, wrong size or font |
+| A4 re-walk | Every unedited glyph keeps its codes, font, text and state, and stays within 0.01 pt; every paint keeps its state; the edited line has exactly the planned glyphs, moved origin, size, spacing, colour and pen; the state and line matrix after the line equal the original | wrong compensation, state leaks (`Tc`, `Tz`, colour, line width, …), a move that shifts following text or `T*`, missing glyphs, wrong size or font |
 | A5 independent | Poppler (`pdftotext -bbox`) finds the same words outside the edited band; inside it, the words of the line's other runs read the same at the same place (or joined to the new text at their outer edge) and are set aside, then the new text is found and the old words fewer times. A word holding glyphs of a run no edit changes is such a neighbour wherever it lies (a footnote marker or a "." right after the line), and a word Poppler joins across the edit ("Hello:") is split, its other run's part pinned at the outer edge (or, when a new letter covers it, found inside the new word). `pdftoppm` renders of the page before and after differ in at most 8 pixels outside the edited glyph boxes and in at most 2 pixels of other runs' glyphs outside the edited glyphs' own boxes (grown by 1 pixel), and no neighbour under the new glyphs loses more than 2 pixels of ink | width-model errors that OffPDF's own walker would share, old text still extractable, rendering-level leaks |
 
 **Phase B** runs on the final file after every other Edit PDF pass (assembly,
@@ -705,6 +724,12 @@ Limitations of the current implementation, in plain terms:
   letters but are never typed.
 - **One line at a time**, one style per line: no reflow, wrapping, per-letter
   styling, new fonts, underline or stroke colour.
+- **A move is one line on its own page.** Cross-page moves, paragraph reflow and
+  Form XObject text are not offered. The moved ink box must stay inside the
+  visible page and a rectangular clip; a line with a non-rectangular clip is
+  refused, and a move off the page is refused with `TEXT_OUTSIDE_VISIBLE_AREA`.
+  Dragging and **Alt+Arrow** are disabled while an inline editor is open, and
+  only one move preview runs at a time.
 - **Very large pages are checked at a lower resolution.** The pixel check renders
   at most 25 million pixels: pages larger than about 52 in on a side are rendered
   below 96 DPI, so it sees less detail (the 0.01 pt re-walk still applies), and a
@@ -729,7 +754,8 @@ Limitations of the current implementation, in plain terms:
 Out of scope for this release by decision (never faked, always refused with a reason): image
 replacement, text inside Form XObjects, annotation and form-widget text,
 shared content streams, Type3, vertical, right-to-left and complex scripts,
-`/UserUnit` ≠ 1, reflow and multi-line editing, font embedding or substitution.
+`/UserUnit` ≠ 1, reflow and multi-line editing, cross-page line moves, font
+embedding or substitution.
 
 Candidates for a later release:
 
@@ -802,6 +828,12 @@ and never commit them.
 - [ ] Open the result in Acrobat Reader, macOS Preview, Chrome and Firefox; search
       finds the new words and not the old; compare at 400 %.
 - [ ] Repeat on a rotated page and on a cropped page.
+- [ ] Drag an editable line, then nudge it with Alt+Arrow and Shift+Alt+Arrow;
+      Save. The saved page has the line at the new place, still selectable and
+      searchable, with no white cover or image; the line after it and any `T*`
+      content did not move. Move a line off the page and confirm the refusal.
+      Undo and redo the move once each. Repeat on `/Rotate` 0/90/180/270 and an
+      offset CropBox.
 - [ ] Keyboard only: E → Tab → arrows → Enter → type → Tab → Bold → Enter → ⌘Z →
       ⌘⇧Z → Save.
 - [ ] VoiceOver labels on lines, the editor, the format bar and the reason dialog.

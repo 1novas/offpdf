@@ -169,6 +169,11 @@ pub struct PageWalk {
     /// `ops_bytes`).
     pub ops: Vec<Op>,
     pub records: Vec<ShowRecord>,
+    /// Records whose text line matrix translation differs from `tm_before`'s (a show op after
+    /// an earlier show on the same line), by record sequence. Kept aside so the common case (a
+    /// `Tm` before every show) adds nothing per record; a `Tm` restore must keep the line matrix
+    /// where the source had it.
+    pub line_before: Vec<(u32, [f64; 2])>,
     pub paints: Vec<PaintRecord>,
     /// The fonts of the depth-0 resources, first-use order, then the unused ones.
     pub page_fonts: Vec<(Vec<u8>, Arc<FontModel>)>,
@@ -187,12 +192,21 @@ pub struct PageWalk {
 }
 
 impl PageWalk {
+    /// The translation of record `seq`'s text line matrix when it differs from its `tm_before`.
+    pub fn line_matrix_before(&self, seq: u32) -> Option<[f64; 2]> {
+        self.line_before
+            .binary_search_by_key(&seq, |(s, _)| *s)
+            .ok()
+            .map(|i| self.line_before[i].1)
+    }
+
     fn empty(page_id: ObjectId, geometry: PageGeometry) -> PageWalk {
         PageWalk {
             page_id,
             geometry,
             ops: Vec::new(),
             records: Vec::new(),
+            line_before: Vec::new(),
             paints: Vec::new(),
             page_fonts: Vec::new(),
             page_reason: None,
@@ -316,6 +330,7 @@ pub(crate) fn walk_page_within(
         hash_steps: 0,
         hash_raw_left: ctx.snap.file_len(),
         records: Vec::new(),
+        line_before: Vec::new(),
         paints: Vec::new(),
         root_fonts: Vec::new(),
         root_font_names: HashSet::new(),
@@ -358,6 +373,7 @@ pub(crate) fn walk_page_within(
         Ok(()) => PageWalk {
             ops,
             records: w.records,
+            line_before: w.line_before,
             paints: w.paints,
             page_fonts: w.root_fonts,
             page_reason: geometry_reason,
@@ -525,6 +541,8 @@ pub(crate) struct Walker<'a> {
     /// (each stream is hashed once per walk; objects that alias one byte range cannot multiply it).
     pub hash_raw_left: usize,
     pub records: Vec<ShowRecord>,
+    /// Line-matrix translations that differ from the record's `tm_before`, by sequence.
+    pub line_before: Vec<(u32, [f64; 2])>,
     pub paints: Vec<PaintRecord>,
     pub root_fonts: Vec<(Vec<u8>, Arc<FontModel>)>,
     /// The names in `root_fonts` (a page may switch fonts on every op).

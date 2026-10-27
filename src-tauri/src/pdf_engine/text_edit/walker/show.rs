@@ -345,6 +345,7 @@ impl<'a> Walker<'a> {
         before: Arc<StateDigest>,
     ) -> Result<ShowRecord, Stop> {
         let tm_before = ex.tm;
+        let tlm_before = ex.tlm;
         let t = ex.gs.text.clone();
         let (tfs, th, tc, tw, ts) = (t.tfs, t.th, t.tc, t.tw, t.ts);
         let font = ex.gs.font_ref.clone();
@@ -458,8 +459,13 @@ impl<'a> Walker<'a> {
         self.mem
             .hold(spans + frame.chain.len() * size_of::<ObjectId>())?;
         let after = self.digest(ex)?;
+        let seq = self.next_seq()?;
+        if tlm_before[4] != tm_before[4] || tlm_before[5] != tm_before[5] {
+            self.mem.grow(&mut self.line_before, 1)?;
+            self.line_before.push((seq, [tlm_before[4], tlm_before[5]]));
+        }
         Ok(ShowRecord {
-            seq: self.next_seq()?,
+            seq,
             depth: frame.depth,
             form_chain: frame.chain.clone(),
             op: kind,

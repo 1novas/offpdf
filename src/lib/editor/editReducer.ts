@@ -18,8 +18,8 @@ import {
   type SourceTextObject,
 } from "./types";
 import { cloneDocument, cloneObject } from "./serialize";
-import { isNoOpEdit, normaliseStyle, normaliseTyped } from "./sourceText";
-import type { SourceTextStyle, TextRect, TextRun } from "../types";
+import { isNoOpEdit, normaliseStyle, normaliseTyped, textMove } from "./sourceText";
+import type { SourceTextStyle, TextRect, TextRun, TextVec } from "../types";
 
 export const MAX_HISTORY = 100;
 
@@ -335,8 +335,18 @@ function sameRect(a: PdfRect, b: PdfRect): boolean {
   return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 }
 
+function sameMove(a: TextVec | undefined, b: TextVec | undefined): boolean {
+  return (a?.x ?? 0) === (b?.x ?? 0) && (a?.y ?? 0) === (b?.y ?? 0);
+}
+
 function upsertSourceText(state: HistoryState, object: SourceTextObject): HistoryState {
-  const incoming = { ...object, rect: normalizePdfRect(object.rect), style: { ...object.style } };
+  const move = textMove(object.text, object.move);
+  const incoming = {
+    ...object,
+    rect: normalizePdfRect(object.rect),
+    style: { ...object.style },
+    ...(move ? { move } : { move: undefined }),
+  };
   const index = state.present.objects.findIndex(
     (o) => o.kind === "sourceText" && o.pageIndex === incoming.pageIndex && o.runId === incoming.runId,
   );
@@ -350,11 +360,18 @@ function upsertSourceText(state: HistoryState, object: SourceTextObject): Histor
   if (
     existing.text === incoming.text &&
     sameStyle(existing.style, incoming.style) &&
-    sameRect(existing.rect, incoming.rect)
+    sameRect(existing.rect, incoming.rect) &&
+    sameMove(existing.move, incoming.move)
   ) {
     return state;
   }
-  const replaced: SourceTextObject = { ...existing, text: incoming.text, style: incoming.style, rect: incoming.rect };
+  const replaced: SourceTextObject = {
+    ...existing,
+    text: incoming.text,
+    style: incoming.style,
+    rect: incoming.rect,
+    ...(move ? { move } : { move: undefined }),
+  };
   const objects = state.present.objects.map((o, i) => (i === index ? replaced : o));
   return pushPast({ ...state, gestureActive: false }, { ...state.present, objects });
 }
@@ -374,6 +391,7 @@ export interface SourceTextFields {
   originalText: string;
   text: string;
   style: SourceTextStyle;
+  move?: TextVec;
 }
 
 /** A text change object (locked; only `text` and `style` change later). */
@@ -383,6 +401,7 @@ export function makeSourceTextObject(
   rect: PdfRect,
   fields: SourceTextFields,
 ): SourceTextObject {
+  const move = textMove(fields.text, fields.move);
   return {
     id,
     kind: "sourceText",
@@ -395,6 +414,7 @@ export function makeSourceTextObject(
     originalText: fields.originalText,
     text: fields.text,
     style: { ...fields.style },
+    ...(move ? { move } : {}),
   };
 }
 
@@ -407,6 +427,8 @@ export interface SetSourceTextInput {
   sourcePageIndex: number;
   text: string;
   style: SourceTextStyle;
+  /** The line's new displacement from its source position (omitted when it stays put). */
+  move?: TextVec;
   /** The committed verdict's `newRect`; the run's own box when absent. */
   rect?: TextRect | null;
 }
@@ -419,7 +441,8 @@ export interface SetSourceTextInput {
 export function setSourceTextAction(input: SetSourceTextInput, id: string): EditAction {
   const text = normaliseTyped(input.text);
   const style = normaliseStyle(input.run, input.style);
-  if (isNoOpEdit(input.run, text, style)) {
+  const move = textMove(text, input.move);
+  if (isNoOpEdit(input.run, text, style, move)) {
     return { type: "REMOVE_SOURCE_TEXT", pageIndex: input.pageIndex, runId: input.run.id };
   }
   return {
@@ -431,6 +454,7 @@ export function setSourceTextAction(input: SetSourceTextInput, id: string): Edit
       originalText: input.run.text,
       text,
       style,
+      ...(move ? { move } : {}),
     }),
   };
 }

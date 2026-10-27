@@ -302,6 +302,8 @@ pub enum EditObjectIn {
         text: String,
         #[serde(default)]
         style: text_edit::rewrite::SourceTextStyleIn,
+        #[serde(default, rename = "move")]
+        move_by: Option<text_edit::rewrite::MoveIn>,
     },
 }
 

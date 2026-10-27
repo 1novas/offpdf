@@ -11,6 +11,7 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type Keyb
 import { Icon } from "@/components/ui/Icon";
 import {
   caretIndexAt,
+  displayedSize,
   editedGeometry,
   makeMapping,
   pdfRectToViewport,
@@ -50,7 +51,10 @@ interface RunView {
   hit: CssRect;
   area: number;
   caretOffsets: number[];
+  /** The line's current origin on screen. */
   origin: { x: number; y: number };
+  /** The same origin in unrotated PDF user space (a moved line is not `run.origin`). */
+  pdfOrigin: { x: number; y: number };
   dir: { x: number; y: number };
   label: string;
   describe: string;
@@ -82,6 +86,8 @@ export interface SourceTextLayerProps {
   onEdit: (run: TextRun, caret: number | "all") => void;
   onExplain: (run: TextRun) => void;
   onRestore: (obj: SourceTextObject) => void;
+  /** Add a user-space displacement to the line (one undo step per call). */
+  onMove: (run: TextRun, delta: { x: number; y: number }) => void | Promise<void>;
   onLeave: () => void;
 }
 
@@ -152,11 +158,13 @@ function buildViews({ runs, objects, fonts, layout, preview, duplicate }: ViewIn
   return ordered.map((run) => {
     const obj = byRun.get(run.id) ?? null;
     const verdict = verdicts.get(run.id) ?? null;
-    const geom = obj ? editedGeometry(run, obj, verdict, fonts) : { rect: run.rect, caretOffsets: run.caretOffsets };
+    const geom = obj
+      ? editedGeometry(run, obj, verdict, fonts)
+      : { rect: run.rect, caretOffsets: run.caretOffsets, origin: run.origin };
     const css = pdfRectToViewport(geom.rect, mapping);
     const h = Math.max(css.h, MIN_HIT_PX);
-    const o = pdfToViewport(run.origin, mapping);
-    const o2 = pdfToViewport({ x: run.origin.x + run.dir.x, y: run.origin.y + run.dir.y }, mapping);
+    const o = pdfToViewport(geom.origin, mapping);
+    const o2 = pdfToViewport({ x: geom.origin.x + run.dir.x, y: geom.origin.y + run.dir.y }, mapping);
     const len = Math.hypot(o2.x - o.x, o2.y - o.y) || 1;
     const notes: string[] = [];
     let flagged: RunView["flagged"] = null;
@@ -172,6 +180,7 @@ function buildViews({ runs, objects, fonts, layout, preview, duplicate }: ViewIn
     const refused = duplicate || !run.editable;
     if (duplicate) notes.unshift(UI.banner.duplicatePage);
     else if (!run.editable) notes.unshift(fillCopy(UI.run.refusedDescribe, { short: reasonCopy(run.reason).short }));
+    else notes.push(UI.run.moveHint);
     return {
       run,
       obj,
@@ -180,6 +189,7 @@ function buildViews({ runs, objects, fonts, layout, preview, duplicate }: ViewIn
       area: css.w * css.h,
       caretOffsets: geom.caretOffsets,
       origin: o,
+      pdfOrigin: { x: geom.origin.x, y: geom.origin.y },
       dir: { x: (o2.x - o.x) / len, y: (o2.y - o.y) / len },
       label: refused
         ? run.text
@@ -268,7 +278,10 @@ export function SourceTextLayer(props: SourceTextLayerProps) {
     return views.filter((v) => pinned.has(v.run.id) || !view || intersects(v.hit, view));
   }, [views, view, rovingId, props.editingId, props.popoverId, objects]);
 
+  const moveBusy = useRef(false);
+
   const activate = (v: RunView, caret: number | "all") => {
+    if (moveBusy.current) return;
     props.onFocusedChange(v.run.id, false);
     if (duplicate) return;
     if (v.run.editable) props.onEdit(v.run, caret);
@@ -280,7 +293,131 @@ export function SourceTextLayer(props: SourceTextLayerProps) {
     return { x: e.clientX - (r?.left ?? 0), y: e.clientY - (r?.top ?? 0) };
   };
 
+  const mapping = makeMapping(layout.geometry, layout.cssWidth, layout.cssHeight);
+  const pxPerPt = layout.cssWidth / Math.max(displayedSize(layout.geometry).w, 1);
+  /** A screen-space displacement as an unrotated PDF delta (works for /Rotate 0/90/180/270). */
+  const screenDeltaToPdf = (dxPx: number, dyPx: number) => {
+    const p0 = viewportToPdf({ x: 0, y: 0 }, mapping);
+    const p1 = viewportToPdf({ x: dxPx, y: dyPx }, mapping);
+    return { x: p1.x - p0.x, y: p1.y - p0.y };
+  };
+
+  const [drag, setDrag] = useState<{ id: string; dx: number; dy: number } | null>(null);
+  const dragRef = useRef<{
+    id: string;
+    run: TextRun;
+    pointerId: number;
+    start: { x: number; y: number };
+    dx: number;
+    dy: number;
+    moved: boolean;
+  } | null>(null);
+
+  /** Start one move, keeping its pending position until the preview commits or refuses it. */
+  const applyMove = (run: TextRun, delta: { x: number; y: number }, after?: () => void) => {
+    if (moveBusy.current) {
+      after?.();
+      return;
+    }
+    moveBusy.current = true;
+    let result: void | Promise<void>;
+    try {
+      result = props.onMove(run, delta);
+    } catch {
+      moveBusy.current = false;
+      after?.();
+      return;
+    }
+    void Promise.resolve(result)
+      .then(
+        () => undefined,
+        () => undefined,
+      )
+      .finally(() => {
+        moveBusy.current = false;
+        after?.();
+      });
+  };
+
+  // The line buttons are pointer-events: none (the layer hit-tests the page), so the drag itself
+  // lives on the layer. Keyboard activation still goes through the buttons.
+  const startDrag = (e: PointerEvent<HTMLDivElement>, v: RunView) => {
+    // Moving is planned with the other committed changes; an open draft is not committed yet.
+    if (
+      moveBusy.current ||
+      props.inert ||
+      duplicate ||
+      props.editingId ||
+      !v.run.editable ||
+      e.button !== 0
+    ) {
+      return;
+    }
+    dragRef.current = {
+      id: v.run.id,
+      run: v.run,
+      pointerId: e.pointerId,
+      start: local(e),
+      dx: 0,
+      dy: 0,
+      moved: false,
+    };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+
+  const moveDrag = (e: PointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (!d || d.pointerId !== e.pointerId) return;
+    const p = local(e);
+    const dx = p.x - d.start.x;
+    const dy = p.y - d.start.y;
+    if (!d.moved && Math.hypot(dx, dy) < 3) return;
+    d.moved = true;
+    d.dx = dx;
+    d.dy = dy;
+    setDrag({ id: d.id, dx, dy });
+  };
+
+  const endDrag = (e: PointerEvent<HTMLDivElement>, cancelled: boolean) => {
+    const d = dragRef.current;
+    if (!d || d.pointerId !== e.pointerId) return;
+    dragRef.current = null;
+    if (e.currentTarget.hasPointerCapture?.(d.pointerId)) {
+      e.currentTarget.releasePointerCapture(d.pointerId);
+    }
+    if (!d.moved) {
+      setDrag(null);
+      return;
+    }
+    // A drag is not a click, even when it is too small to be a move.
+    keyEcho.current = Date.now();
+    if (cancelled) {
+      setDrag(null);
+      return;
+    }
+    const p0 = viewportToPdf(d.start, mapping);
+    const p1 = viewportToPdf({ x: d.start.x + d.dx, y: d.start.y + d.dy }, mapping);
+    const delta = { x: p1.x - p0.x, y: p1.y - p0.y };
+    if (Math.hypot(delta.x, delta.y) < 0.01) {
+      setDrag(null);
+      return;
+    }
+    applyMove(d.run, delta, () => setDrag(null));
+  };
+
   const onRunKeyDown = (e: KeyboardEvent<HTMLButtonElement>, v: RunView) => {
+    if (e.altKey && e.key.startsWith("Arrow")) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (moveBusy.current || duplicate || props.editingId || !v.run.editable || props.inert) return;
+      const step = (e.shiftKey ? 10 : 1) * pxPerPt;
+      const delta = screenDeltaToPdf(
+        e.key === "ArrowRight" ? step : e.key === "ArrowLeft" ? -step : 0,
+        e.key === "ArrowDown" ? step : e.key === "ArrowUp" ? -step : 0,
+      );
+      if (Math.hypot(delta.x, delta.y) >= 0.01) applyMove(v.run, delta);
+      return;
+    }
     const move = KEYS[e.key];
     if (move) {
       e.preventDefault();
@@ -303,7 +440,6 @@ export function SourceTextLayer(props: SourceTextLayerProps) {
     }
   };
 
-  const mapping = makeMapping(layout.geometry, layout.cssWidth, layout.cssHeight);
   // The reason dialog opens where the tooltip sits (just under the line) and says more: no tooltip under it.
   const tip = props.popoverId || !tipId ? null : viewById.get(tipId) ?? null;
   const cursor = hovered ? (hovered.state === "refused" ? " is-over-refused" : " is-over-editable") : "";
@@ -315,42 +451,78 @@ export function SourceTextLayer(props: SourceTextLayerProps) {
       role="group"
       aria-label={fillCopy(UI.layer.label, { n: props.pageNumber })}
       data-source-text=""
-      onPointerMove={(e: PointerEvent<HTMLDivElement>) => setHoverId(hitTest(views, local(e))?.run.id ?? null)}
+      style={
+        !props.inert && !duplicate && views.some((v) => v.run.editable) ? { touchAction: "none" } : undefined
+      }
+      onPointerDown={(e: PointerEvent<HTMLDivElement>) => {
+        if (e.target !== e.currentTarget) return;
+        const v = hitTest(views, local(e));
+        if (v) startDrag(e, v);
+      }}
+      onPointerMove={(e: PointerEvent<HTMLDivElement>) => {
+        moveDrag(e);
+        setHoverId(hitTest(views, local(e))?.run.id ?? null);
+      }}
+      onPointerUp={(e: PointerEvent<HTMLDivElement>) => endDrag(e, false)}
+      onPointerCancel={(e: PointerEvent<HTMLDivElement>) => endDrag(e, true)}
+      onLostPointerCapture={(e: PointerEvent<HTMLDivElement>) => {
+        if (dragRef.current?.pointerId === e.pointerId) {
+          dragRef.current = null;
+          setDrag(null);
+        }
+      }}
       onPointerLeave={() => setHoverId(null)}
       onClick={(e) => {
         if (e.target !== e.currentTarget || e.button !== 0) return;
+        // A completed drag must not also open the line at its old position.
+        if (Date.now() - keyEcho.current <= KEY_ECHO_MS) return;
         const p = local(e);
         const v = hitTest(views, p);
-        if (v) activate(v, v.run.editable ? caretIndexAt(v.run, viewportToPdf(p, mapping), v.caretOffsets) : "all");
+        if (v) {
+          activate(
+            v,
+            v.run.editable ? caretIndexAt(v.run, viewportToPdf(p, mapping), v.caretOffsets, v.pdfOrigin) : "all",
+          );
+        }
       }}
     >
-      {shown.map((v, i) => (
-        <button
-          key={v.run.id}
-          ref={(el) => {
-            if (el) buttons.current.set(v.run.id, el);
-            else buttons.current.delete(v.run.id);
-          }}
-          type="button"
-          className={`st-run is-${v.state}${v.flagged ? ` is-${v.flagged}` : ""}${v.run.substituted ? " is-substituted" : ""}${hoverId === v.run.id ? " is-hover" : ""}`}
-          style={{ left: v.css.x, top: v.css.y, width: Math.max(v.css.w, 1), height: Math.max(v.css.h, 1) }}
-          tabIndex={v.run.id === rovingId ? 0 : -1}
-          aria-label={v.label}
-          aria-disabled={v.state === "refused" ? true : undefined}
-          aria-describedby={v.describe ? `${uid}-d${i}` : undefined}
-          onFocus={() => v.run.id !== focusedId && props.onFocusedChange(v.run.id, false)}
-          onKeyDown={(e) => onRunKeyDown(e, v)}
-          onKeyUp={(e) => e.key === " " && e.preventDefault()}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (Date.now() - keyEcho.current > KEY_ECHO_MS) activate(v, "all");
-          }}
-        >
-          {v.flagged && <Icon name="alertTriangle" size={12} className="st-run__flag" />}
-          {v.run.substituted && v.state !== "refused" && <span className="st-run__badge" aria-hidden>i</span>}
-          {v.state === "edited" && <span className="st-run__dot" aria-hidden />}
-        </button>
-      ))}
+      {shown.map((v, i) => {
+        const pending = drag?.id === v.run.id ? drag : null;
+        return (
+          <button
+            key={v.run.id}
+            ref={(el) => {
+              if (el) buttons.current.set(v.run.id, el);
+              else buttons.current.delete(v.run.id);
+            }}
+            type="button"
+            className={`st-run is-${v.state}${v.flagged ? ` is-${v.flagged}` : ""}${v.run.substituted ? " is-substituted" : ""}${hoverId === v.run.id ? " is-hover" : ""}${pending ? " is-dragging" : ""}`}
+            style={{
+              left: v.css.x,
+              top: v.css.y,
+              width: Math.max(v.css.w, 1),
+              height: Math.max(v.css.h, 1),
+              ...(pending ? { transform: `translate(${pending.dx}px, ${pending.dy}px)` } : {}),
+            }}
+            tabIndex={v.run.id === rovingId ? 0 : -1}
+            aria-label={v.label}
+            aria-disabled={v.state === "refused" ? true : undefined}
+            aria-describedby={v.describe ? `${uid}-d${i}` : undefined}
+            aria-keyshortcuts={v.run.editable ? "Alt+ArrowLeft Alt+ArrowRight Alt+ArrowUp Alt+ArrowDown" : undefined}
+            onFocus={() => v.run.id !== focusedId && props.onFocusedChange(v.run.id, false)}
+            onKeyDown={(e) => onRunKeyDown(e, v)}
+            onKeyUp={(e) => e.key === " " && e.preventDefault()}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (Date.now() - keyEcho.current > KEY_ECHO_MS) activate(v, "all");
+            }}
+          >
+            {v.flagged && <Icon name="alertTriangle" size={12} className="st-run__flag" />}
+            {v.run.substituted && v.state !== "refused" && <span className="st-run__badge" aria-hidden>i</span>}
+            {v.state === "edited" && <span className="st-run__dot" aria-hidden />}
+          </button>
+        );
+      })}
       <div hidden>
         {shown.map((v, i) => (v.describe ? <span key={v.run.id} id={`${uid}-d${i}`}>{v.describe}</span> : null))}
       </div>

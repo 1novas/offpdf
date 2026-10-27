@@ -124,12 +124,13 @@ full verification design are in [`docs/EDIT_TEXT.md`](../../../docs/EDIT_TEXT.md
 ```ts
 {
   id, kind: "sourceText", pageIndex, rect,   // rect = the line's box after the change (verdict newRect)
-  locked: true,                              // never moved, resized, rotated, copied or pasted
+  locked: true,                              // overlay-locked: never moved, resized, rotated, copied or pasted as an object
   runId,                                     // the engine's line id on that source page
   sourceFingerprint,                         // content hash of the source file when the line was read
   sourcePageIndex,                           // 0-based page in the source file
   originalText, text,
-  style: { sizePt?, face?, fill?, letterSpacingPt? }   // only fields that differ from the original
+  style: { sizePt?, face?, fill?, letterSpacingPt? },  // only fields that differ from the original
+  move?: { x, y }                            // user-space displacement from the source position
 }
 ```
 
@@ -139,9 +140,18 @@ Rules:
   committing the original text with no style change deletes it (a no-op writes
   nothing). Commit, restore and inspector style changes are one undo step each.
 - **Locked.** `applyUpdate` accepts only `text` and `style`; it strips `rect`,
-  rotation, opacity, `locked`, `runId`, fingerprint and page fields. The objects
-  draw nothing in the SVG layer, are excluded from marquee, copy, paste,
-  duplicate and nudge, and are never added by `ADD_MANY`.
+  rotation, opacity, `locked`, `runId`, fingerprint, `move` and page fields. The
+  objects draw nothing in the SVG layer, are excluded from marquee, copy, paste,
+  duplicate and nudge, and are never added by `ADD_MANY`. A text line moves only
+  through the source-text engine, never as an overlay object.
+- **Moving a line.** Drag an editable line, or press **Alt+Arrow** (1 pt;
+  **Shift+Alt+Arrow** for 10 pt). The pointer delta is converted from screen
+  space to unrotated PDF user space, so it follows the page's `/Rotate` and
+  CropBox. The result is one `UPSERT_SOURCE_TEXT` with `move` set (one undo
+  step); returning to the source position removes the move. A move is ignored
+  while any inline editor is open (its draft is not committed yet) and only one
+  move preview runs at a time. `move` composes with `text` and `style` in the
+  same object, so editing and moving a line is one source edit.
 - **Fingerprint and source page.** Every object carries the source fingerprint
   and `sourcePageIndex`. Reordering pages remaps `pageIndex` and keeps both;
   removing a page drops its changes. If the file changes on disk, the fingerprint
@@ -155,6 +165,14 @@ Rules:
   preview is on screen (`canShowOriginal`: the page has changes and preview
   bytes). The bytes never leave the page surface and are never stored in the
   document.
+- **Move refusal and Save.** The planner keeps the moved ink box inside the
+  visible page (CropBox and `/Rotate` included) and a rectangular clip; a move
+  off the page is `TEXT_OUTSIDE_VISIBLE_AREA`, and a line with a non-rectangular
+  clip is refused (`TEXT_EDIT_REFUSED` + `CLIPPED`). Shared content, Form XObject
+  text, Type3 and unsupported lines are never moved. Save emits the moved `Tm`
+  before the line's show operator, restores the source line matrix after it, and
+  runs the same Phase A checks as any text edit; the source fingerprint is
+  rechecked first.
 - **Save.** `toExportDocument` sends the objects to `edit_pdf_overlays`
   unchanged; Rust ignores `id` and `locked`. Save re-reads each edited source
   (never the editor's cache), checks the fingerprint, plans every change again
@@ -334,6 +352,8 @@ the reason dialog.
 | | Home / End | first / last text block on the page |
 | | Page Up / Page Down | 10 lines back / forward |
 | | Enter, F2 or Space | edit the line with all text selected, or open the reason dialog for a refused line |
+| | Alt+Arrow | nudge an editable line by 1 pt (Shift+Alt+Arrow: 10 pt) in screen space; one undo step per press; `aria-keyshortcuts` lists it |
+| | Drag an editable line | move it on the page; one undo step per release; a click without a drag still edits it |
 | | Delete / Backspace | restore the original of a changed line (one undo step) |
 | | Esc | leave the layer |
 | | ⌘/Ctrl+Z, ⌘/Ctrl+Shift+Z, ⌘/Ctrl+Y | undo / redo (existing handler) |

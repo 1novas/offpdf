@@ -7,7 +7,7 @@
  * See EDIT_MODEL.md for the full contract.
  */
 
-import type { SourceTextStyle } from "../types";
+import type { SourceTextStyle, TextVec } from "../types";
 
 /** Axis-aligned box in unrotated PDF user space (points). `geometry.box` is the
  * pdf.js visible window and the export mapping window. */
@@ -274,6 +274,8 @@ export interface SourceTextObject extends EditObjectBase {
   text: string;
   /** Only fields that differ from the original. */
   style: SourceTextStyle;
+  /** Unrotated user-space displacement from the original line, omitted when it stays put. */
+  move?: TextVec;
 }
 
 export type EditObject =

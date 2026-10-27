@@ -25,6 +25,7 @@ function exportSourceText(o: SourceTextObject): SourceTextObject {
     originalText: o.originalText,
     text: o.text,
     style: compactSourceTextStyle(o.style),
+    ...(o.text !== "" && o.move ? { move: { x: o.move.x, y: o.move.y } } : {}),
   };
 }
 
@@ -39,6 +40,7 @@ export function cloneObject(o: EditObject): EditObject {
     next.quads = next.quads.slice();
   } else if (next.kind === "sourceText") {
     next.style = { ...next.style };
+    if (next.move) next.move = { ...next.move };
   }
   return next;
 }

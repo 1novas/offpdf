@@ -47,6 +47,7 @@ impl PageModel {
         let ops: usize = walk.ops.iter().map(op_heap).sum();
         let runs: usize = self.runs.iter().map(|r| run_bytes(r, &mut digests)).sum();
         let vectors = walk.records.capacity() * size_of::<ShowRecord>()
+            + walk.line_before.capacity() * size_of::<(u32, [f64; 2])>()
             + walk.paints.capacity() * size_of::<PaintRecord>()
             + walk.ops.capacity() * size_of::<Op>()
             + self.runs.capacity() * size_of::<TextRun>()

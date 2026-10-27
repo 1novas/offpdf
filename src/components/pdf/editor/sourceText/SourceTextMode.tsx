@@ -12,10 +12,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Spinner } from "@/components/ui/Spinner";
-import { fontsByKey, makeMapping, pdfRectToViewport, textStampGeometry, type EditObject, type SourceTextObject } from "@/lib/editor";
+import {
+  addMove,
+  editsSignature,
+  fontsByKey,
+  makeMapping,
+  makeSourceTextObject,
+  pdfRectToViewport,
+  problemMessage,
+  textMove,
+  textStampGeometry,
+  toTextEditIn,
+  type EditObject,
+  type SourceTextObject,
+} from "@/lib/editor";
 import type { TextStamp } from "@/lib/editor/sourceText";
-import { UI, fileBanner, fillCopy, reasonCopy } from "@/lib/editor/sourceTextCopy";
-import type { AppError, TextFont, TextRun } from "@/lib/types";
+import { PROBLEM_COPY, UI, fileBanner, fillCopy, problemCopy, reasonCopy } from "@/lib/editor/sourceTextCopy";
+import { toAppError, type AppError, type TextEditIn, type TextFont, type TextRun } from "@/lib/types";
 import type { TextSourceState, TextSources } from "@/features/edit-pdf/useTextSources";
 import type { PageLayout } from "../PageSurface";
 import type { EditSession } from "../useEditSession";
@@ -273,6 +286,8 @@ export function SourceTextMode(props: SourceTextModeProps) {
   const tryDone = useRef<TryDone | null>(null);
   const editingRef = useRef(editing);
   editingRef.current = editing;
+  /** One move preview at a time: a drag release or a nudge, never a queue. */
+  const moving = useRef(false);
   const handled = useRef<TextRequest | null>(null); // by identity: the canvas restarts its tick after clearing
 
   const announce = (sentence: string) => setSaid((s) => ({ text: sentence, n: s.n + 1 }));
@@ -307,6 +322,73 @@ export function SourceTextMode(props: SourceTextModeProps) {
     if (editingRef.current && !(await finishEditing())) return;
     setPopoverId(run.id);
     focusRun(run.id, false);
+  };
+
+  /**
+   * Move one line by a user-space delta: preview the whole page with the new
+   * position, then commit exactly one UPSERT (one undo step) only when the same
+   * plan/qpdf/checks as Save accept it. A refused move leaves the page as it was
+   * and says why.
+   */
+  const moveLine = async (run: TextRun, delta: { x: number; y: number }) => {
+    const fingerprint = page.fingerprint;
+    if (!fingerprint || page.duplicate || moving.current) return;
+    // A move is planned with every other committed change on the page. While the inline editor is
+    // open its draft is not committed yet, so moving now could plan against a stale set.
+    if (editingRef.current) return;
+    const existing = page.objects.find((o) => o.runId === run.id) ?? null;
+    const text = existing?.text ?? run.text;
+    const style = existing?.style ?? {};
+    const move = textMove(text, addMove(existing?.move, delta)) ?? { x: 0, y: 0 };
+    const moved = move.x !== 0 || move.y !== 0;
+    const candidate: TextEditIn = {
+      runId: run.id,
+      originalText: run.text,
+      text,
+      style,
+      ...(moved ? { move } : {}),
+    };
+    moving.current = true;
+    try {
+      const preview = await page.preview.request([
+        ...page.objects.filter((o) => o.runId !== run.id).map(toTextEditIn),
+        candidate,
+      ]);
+      const verdict = preview.verdicts.find((v) => v.runId === run.id);
+      if (!verdict?.ok || preview.pageProblem) {
+        announce(
+          verdict && !verdict.ok
+            ? problemMessage(verdict, run, page.fonts, page.fileName)
+            : preview.pageProblem
+              ? problemCopy(preview.pageProblem.code, [], { name: page.fileName })
+              : PROBLEM_COPY.EDIT_VERIFY_FAILED,
+        );
+        return;
+      }
+      const fields = {
+        runId: run.id,
+        sourceFingerprint: fingerprint,
+        sourcePageIndex: page.sourcePageIndex,
+        originalText: run.text,
+        text,
+        style,
+        ...(moved ? { move } : {}),
+      };
+      const committed = makeSourceTextObject(existing?.id ?? run.id, page.pageIndex, verdict.newRect ?? run.rect, fields);
+      page.preview.seed(editsSignature([...page.objects.filter((o) => o.runId !== run.id), committed]), preview);
+      session.setSourceText({ ...fields, pageIndex: page.pageIndex, run, rect: verdict.newRect, move });
+      announce(
+        moved
+          ? fillCopy(UI.announce.moved, { dx: delta.x.toFixed(1), dy: delta.y.toFixed(1) })
+          : UI.announce.movedHome,
+      );
+    } catch (e) {
+      const err = toAppError(e);
+      if (FILE_FAULTS.has(err.code)) page.reportFault(err);
+      else announce(errorText(err));
+    } finally {
+      moving.current = false;
+    }
   };
 
   useEffect(() => {
@@ -348,6 +430,7 @@ export function SourceTextMode(props: SourceTextModeProps) {
           session.revertSourceText(obj.id);
           announce(UI.announce.restored);
         }}
+        onMove={moveLine}
         onLeave={onLeave}
       />
       {editRun && page.fingerprint && editing && (

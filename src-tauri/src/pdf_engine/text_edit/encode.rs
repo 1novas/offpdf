@@ -7,16 +7,17 @@ use crate::pdf_engine::text_edit::fonts::Code;
 use crate::pdf_engine::text_edit::lexer::{
     is_delimiter, is_whitespace, lex_content, LexLimits, Operator,
 };
-use crate::pdf_engine::text_edit::limits::{NUMBER_ABS_MAX, NUMBER_DECIMALS};
+use crate::pdf_engine::text_edit::limits::{MOVE_NUMBER_DECIMALS, NUMBER_ABS_MAX, NUMBER_DECIMALS};
 use crate::pdf_engine::text_edit::reasons::{EditProblem, EditProblemCode};
 
-/// The operators a replacement may contain (§A.4): `Tf Tc Tw T* TJ` plus the fill operators a
-/// verbatim restore or the new colour can need (`g rg k cs sc scn`).
-pub const REPLACEMENT_OPERATORS: [Operator; 11] = [
+/// The operators a replacement may contain (§A.4): `Tf Tc Tw T* Tm TJ` plus the fill operators a
+/// verbatim restore, a moved line or the new colour can need (`g rg k cs sc scn`).
+pub const REPLACEMENT_OPERATORS: [Operator; 12] = [
     Operator::Tf,
     Operator::Tc,
     Operator::Tw,
     Operator::TStar,
+    Operator::Tm,
     Operator::TJ,
     Operator::g,
     Operator::rg,
@@ -26,16 +27,14 @@ pub const REPLACEMENT_OPERATORS: [Operator; 11] = [
     Operator::scn,
 ];
 
-/// A number as written in a replacement: ≤ `NUMBER_DECIMALS` decimals, trailing zeros and dot
-/// stripped, `-0` → `0`, never an exponent, `|v| ≤ NUMBER_ABS_MAX`.
-pub fn fmt_num(v: f64) -> Result<String, EditProblem> {
+fn fmt_with(v: f64, decimals: usize) -> Result<String, EditProblem> {
     if !v.is_finite() || v.abs() > NUMBER_ABS_MAX {
         return Err(EditProblem::new(
             EditProblemCode::EditVerifyFailed,
             Some(format!("number out of range: {v}")),
         ));
     }
-    let mut s = format!("{v:.prec$}", prec = NUMBER_DECIMALS);
+    let mut s = format!("{v:.prec$}", prec = decimals);
     if s.contains('.') {
         while s.ends_with('0') {
             s.pop();
@@ -48,6 +47,17 @@ pub fn fmt_num(v: f64) -> Result<String, EditProblem> {
         s = "0".to_string();
     }
     Ok(s)
+}
+
+/// A number as written in a replacement: ≤ `NUMBER_DECIMALS` decimals, trailing zeros and dot
+/// stripped, `-0` → `0`, never an exponent, `|v| ≤ NUMBER_ABS_MAX`.
+pub fn fmt_num(v: f64) -> Result<String, EditProblem> {
+    fmt_with(v, NUMBER_DECIMALS)
+}
+
+/// A `Tm` operand: enough decimals that a restored matrix passes the strict post-state check.
+pub fn fmt_precise(v: f64) -> Result<String, EditProblem> {
+    fmt_with(v, MOVE_NUMBER_DECIMALS)
 }
 
 /// `fmt_num` and the value a reader parses back from it.

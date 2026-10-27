@@ -214,6 +214,7 @@ fn plan_fuzz() {
                     original_text: old.clone(),
                     text: text(&mut rng, &old),
                     style: style(&mut rng),
+                    move_by: None,
                 });
             }
             match plan_page(&c, &m, &edits) {

@@ -60,6 +60,20 @@ impl SourceTextStyleIn {
     }
 }
 
+/// A user-space displacement of a source line, relative to where the line is in the source file.
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoveIn {
+    pub x: f64,
+    pub y: f64,
+}
+
+impl MoveIn {
+    pub fn is_zero(&self) -> bool {
+        self.x == 0.0 && self.y == 0.0
+    }
+}
+
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TextEditIn {
@@ -68,6 +82,9 @@ pub struct TextEditIn {
     pub text: String,
     #[serde(default)]
     pub style: SourceTextStyleIn,
+    /// Move the line by this unrotated user-space delta (text changes may move too).
+    #[serde(default, rename = "move")]
+    pub move_by: Option<MoveIn>,
 }
 
 /// What the replacement sets. Numbers are the values read back from what is written.
@@ -143,6 +160,8 @@ pub struct ExpectedRun {
     pub glyphs: Vec<(Vec<u8>, u64, Code)>,
     pub prefix_glyphs: usize,
     pub suffix_glyphs: usize,
+    /// The user-space displacement of the whole line (the move request, after validation).
+    pub move_user: (f64, f64),
     /// Displacement of the first kept suffix glyph (`Δ·dir`).
     pub shift_user: (f64, f64),
     /// Suffix glyph index (in `glyphs`) from which the displacement is 0 (a column gap absorbed Δ).
@@ -290,6 +309,7 @@ pub fn plan_page(
     }
     for e in edits {
         style::validate_style(&e.style)?;
+        style::validate_move(e.move_by)?;
     }
     let mut counts: HashMap<&str, usize> = HashMap::new();
     for e in edits {
@@ -381,11 +401,17 @@ fn plan_edit(
         .ok_or_else(|| problem(EditProblemCode::EditVerifyFailed, "run without members"))?;
     let primary_model: Option<Arc<FontModel>> = primary.font.clone();
     let mut wanted = style::normalise(run, &edit.style);
+    let move_by = edit.move_by.unwrap_or_default();
     if edit.text.is_empty() {
-        // Removing a line draws nothing: there is no style to apply.
+        // Removing a line draws nothing: there is no style or place to apply.
         wanted = SourceTextStyleIn::default();
     }
-    if edit.text == run.text && wanted.is_empty() {
+    let move_user = if edit.text.is_empty() || move_by.is_zero() {
+        (0.0, 0.0)
+    } else {
+        (move_by.x, move_by.y)
+    };
+    if edit.text == run.text && wanted.is_empty() && move_user == (0.0, 0.0) {
         return Ok((
             EditVerdict {
                 run_id: run.id.clone(),
@@ -411,7 +437,7 @@ fn plan_edit(
         None => model.surface(run),
     };
     let new_units = diff::new_units(model, run, &surface, &target, &edit.text)?;
-    let laid = layout::lay_out(masks, model, run, &surface, &target, &new_units)?;
+    let laid = layout::lay_out(masks, model, run, &surface, &target, &new_units, move_user)?;
     if laid.text != edit.text {
         // Every later check compares the file with the request, not with the planner's reading
         // of its own glyphs; a plan that would not read back as typed never leaves here.

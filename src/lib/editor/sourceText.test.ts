@@ -4,6 +4,7 @@ import { displayedSize, makeMapping, pdfRectToViewport } from "./coords";
 import type { PageGeometry } from "./types";
 import { makeSourceTextObject } from "./editReducer";
 import {
+  addMove,
   blockingProblem,
   blockingVerdict,
   caretIndexAt,
@@ -14,6 +15,8 @@ import {
   fontsByKey,
   isNoOpEdit,
   missingChars,
+  MOVE_EPSILON_PT,
+  normaliseMove,
   normaliseStyle,
   normaliseTyped,
   overlapsNext,
@@ -263,6 +266,20 @@ describe("normaliseStyle / isNoOpEdit (B7)", () => {
     expect(isNoOpEdit(run(), "Hellö", {})).toBe(false);
     expect(isNoOpEdit(run(), "Hello", { sizePt: 13 })).toBe(false);
   });
+
+  it("a move is an edit, except below the screen-rounding epsilon", () => {
+    expect(normaliseMove({ x: MOVE_EPSILON_PT, y: -MOVE_EPSILON_PT })).toBeUndefined();
+    expect(normaliseMove({ x: 0.02, y: -3 })).toEqual({ x: 0.02, y: -3 });
+    expect(normaliseMove({ x: Number.NaN, y: 1 })).toBeUndefined();
+    expect(isNoOpEdit(run(), "Hello", {}, { x: 0.02, y: 0 })).toBe(false);
+    expect(isNoOpEdit(run(), "Hello", {}, { x: 0.005, y: 0 })).toBe(true);
+  });
+
+  it("addMove accumulates and drops a return to the source position", () => {
+    expect(addMove(undefined, { x: 10, y: -4 })).toEqual({ x: 10, y: -4 });
+    expect(addMove({ x: 10, y: -4 }, { x: -10, y: 4 })).toEqual({ x: 0, y: 0 });
+    expect(addMove({ x: 10, y: -4 }, { x: 1.5, y: 0 })).toEqual({ x: 11.5, y: -4 });
+  });
 });
 
 describe("blockingProblem", () => {
@@ -377,6 +394,7 @@ describe("editedGeometry", () => {
     expect(editedGeometry(run(), obj, current, FONTS)).toEqual({
       rect: { x: 72, y: 697, w: 34, h: 12 },
       caretOffsets: [0, 1, 2, 3, 4, 5, 34],
+      origin: { x: 72, y: 700 },
     });
   });
 
@@ -390,6 +408,18 @@ describe("editedGeometry", () => {
       expect(g.caretOffsets).toEqual(expected);
       expect(g.caretOffsets).toHaveLength(7);
     }
+  });
+
+  it("edits a moved line where it is now", () => {
+    const moved = { ...obj, rect: { x: 92, y: 687, w: 40, h: 12 }, move: { x: 20, y: -10 } };
+    const g = editedGeometry(run(), moved, null, FONTS);
+    expect(g.rect).toEqual(moved.rect);
+    expect(g.origin).toEqual({ x: 92, y: 690 });
+    const current = verdict({ ok: true, newRect: { x: 92, y: 687, w: 46, h: 12 }, caretOffsets: [0, 1, 2, 3, 4, 5, 46] });
+    expect(editedGeometry(run(), moved, current, FONTS)).toMatchObject({
+      rect: { x: 92, y: 687, w: 46, h: 12 },
+      origin: { x: 92, y: 690 },
+    });
   });
 });
 
@@ -501,6 +531,48 @@ describe("toTextEditIn / editsSignature", () => {
     const a2 = make("9", "r1", "One", { sizePt: 13, fill: "#ff0000" });
     expect(editsSignature([a, b])).toBe(editsSignature([b, a2]));
     expect(editsSignature([a, b])).not.toBe(editsSignature([make("1", "r1", "One"), b]));
+  });
+
+  it("sends the move and keys the preview by it", () => {
+    const base = make("1", "r1", "One");
+    const moved = makeSourceTextObject("1", 0, { x: 0, y: 0, w: 10, h: 10 }, {
+      runId: "r1",
+      sourceFingerprint: "fp",
+      sourcePageIndex: 0,
+      originalText: "x",
+      text: "One",
+      style: {},
+      move: { x: 12.5, y: -3 },
+    });
+    expect(toTextEditIn(base).move).toBeUndefined();
+    expect(toTextEditIn(moved)).toMatchObject({ move: { x: 12.5, y: -3 } });
+    expect(editsSignature([moved])).not.toBe(editsSignature([base]));
+    const same = makeSourceTextObject("2", 0, { x: 0, y: 0, w: 10, h: 10 }, {
+      runId: "r1",
+      sourceFingerprint: "fp",
+      sourcePageIndex: 0,
+      originalText: "x",
+      text: "One",
+      style: {},
+      move: { x: 12.5, y: -3 },
+    });
+    expect(editsSignature([moved])).toBe(editsSignature([same]));
+  });
+
+  it("ignores the move of a removed line", () => {
+    const removed = makeSourceTextObject("1", 0, { x: 0, y: 0, w: 10, h: 10 }, {
+      runId: "r1",
+      sourceFingerprint: "fp",
+      sourcePageIndex: 0,
+      originalText: "x",
+      text: "",
+      style: {},
+      move: { x: 12.5, y: -3 },
+    });
+    expect(removed.move).toBeUndefined();
+    const manual = { ...removed, move: { x: 12.5, y: -3 } };
+    expect(toTextEditIn(manual).move).toBeUndefined();
+    expect(editsSignature([manual])).toBe(editsSignature([removed]));
   });
 });
 

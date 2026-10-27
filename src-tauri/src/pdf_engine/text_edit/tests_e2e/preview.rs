@@ -1,12 +1,14 @@
-//! PREV-01…07: the preview command path (`service::preview_edits`) — a real qpdf-written,
+//! PREV-01…08: the preview command path (`service::preview_edits`) — a real qpdf-written,
 //! Phase-A-proven one-page PDF — and its agreement with Save.
 
 use super::save::pages_doc;
 use super::{page_parts, E2e};
 use crate::pdf_engine::text_edit::dto::{TextEditIn, TextPreviewDto};
+use crate::pdf_engine::text_edit::engines::RunOpts;
+use crate::pdf_engine::text_edit::poppler::pdftotext_words;
 use crate::pdf_engine::text_edit::reasons::Face;
 use crate::pdf_engine::text_edit::reasons::{EditProblemCode, TextWarningCode};
-use crate::pdf_engine::text_edit::rewrite::SourceTextStyleIn;
+use crate::pdf_engine::text_edit::rewrite::{MoveIn, SourceTextStyleIn};
 use crate::pdf_engine::text_edit::service;
 use crate::pdf_engine::text_edit::testkit::producers::{
     self as fx, DocBuilder, PageSpec, HELVETICA,
@@ -44,6 +46,7 @@ pub(crate) fn edit_in(run_id: &str, old: &str, new: &str, style: SourceTextStyle
         original_text: old.to_string(),
         text: new.to_string(),
         style,
+        move_by: None,
     }
 }
 
@@ -67,14 +70,25 @@ impl E2e {
                 edit_in(&run.id, old, new, style.clone())
             })
             .collect();
+        self.preview_with(path, page, &fp, &ins)
+    }
+
+    /// `service::preview_edits` of already built edits, with the source fingerprint read once.
+    pub(crate) fn preview_with(
+        &self,
+        path: &Path,
+        page: u32,
+        fp: &str,
+        ins: &[TextEditIn],
+    ) -> TextPreviewDto {
         service::preview_edits(
             &self.cache,
             &self.engines,
             &self.temp_root(),
             &path.to_string_lossy(),
-            &fp,
+            fp,
             page,
-            &ins,
+            ins,
         )
         .unwrap_or_else(|e| panic!("preview: {e} {:?}", e.details))
     }
@@ -359,5 +373,53 @@ fn prev_07_concurrent_inspects_and_previews_share_the_cache_safely() {
     assert!(
         results.windows(2).all(|w| w[0] == w[1]),
         "PREV-07 previews differ"
+    );
+}
+
+#[test]
+fn prev_08_a_moved_line_is_written_at_the_new_place() {
+    let Some(t) = E2e::new("prev_08") else {
+        return;
+    };
+    let src = t.file("p8.pdf", &fx::word());
+    let (fp, dto) = t.page(&src, 0);
+    let run = dto
+        .runs
+        .iter()
+        .find(|r| r.text == "Invoice 2026")
+        .expect("invoice run");
+    let edit = TextEditIn {
+        run_id: run.id.clone(),
+        original_text: "Invoice 2026".to_string(),
+        text: "Invoice 2026".to_string(),
+        style: SourceTextStyleIn::default(),
+        move_by: Some(MoveIn { x: 20.0, y: -10.0 }),
+    };
+    let p = t.preview_with(&src, 0, &fp, &[edit]);
+    assert!(p.verdicts.iter().all(|v| v.ok), "PREV-08 {:?}", p.verdicts);
+    assert!(p.page_problem.is_none());
+    let rect = p.verdicts[0].new_rect.expect("moved rect");
+    assert!((rect.x - (run.rect.x + 20.0)).abs() < 0.05, "{rect:?}");
+    assert!((rect.y - (run.rect.y - 10.0)).abs() < 0.05, "{rect:?}");
+    let page = t.preview_file(&p, "p8-preview.pdf");
+    let before = pdftotext_words(&t.engines, &src, 1, &RunOpts::default()).expect("source words");
+    let after = pdftotext_words(&t.engines, &page, 1, &RunOpts::default()).expect("preview words");
+    let old = before
+        .iter()
+        .find(|w| w.text.contains("Invoice"))
+        .expect("source Invoice");
+    let moved = after
+        .iter()
+        .find(|w| w.text.contains("Invoice"))
+        .expect("preview Invoice");
+    assert!(
+        (moved.x0 - old.x0 - 20.0).abs() < 0.05,
+        "PREV-08 x {} -> {}",
+        old.x0,
+        moved.x0
+    );
+    assert!(
+        after.iter().any(|w| w.text.contains("2026")),
+        "PREV-08 text kept"
     );
 }

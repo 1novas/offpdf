@@ -18,9 +18,11 @@ import {
   isNoOpEdit,
   makeMapping,
   makeSourceTextObject,
+  normaliseMove,
   normaliseStyle,
   normaliseTyped,
   overlapsNext,
+  textMove,
   pdfRectToViewport,
   pdfToViewport,
   problemMessage,
@@ -160,7 +162,8 @@ export function SourceTextEditor(props: SourceTextEditorProps) {
   };
 
   const check = async (text: string, style: SourceTextStyle, opts: DoneOptions, gen: number): Promise<boolean> => {
-    const candidate: TextEditIn = { runId: run.id, originalText: run.text, text, style };
+    const move = textMove(text, existing?.move);
+    const candidate: TextEditIn = { runId: run.id, originalText: run.text, text, style, ...(move ? { move } : {}) };
     try {
       const preview = await props.requestPreview([...props.others.map(toTextEditIn), candidate]);
       if (gen !== generation.current || !mounted.current) return closed.current || !mounted.current;
@@ -173,6 +176,7 @@ export function SourceTextEditor(props: SourceTextEditorProps) {
           originalText: run.text,
           text,
           style,
+          ...(move ? { move } : {}),
         };
         const committed = makeSourceTextObject(existing?.id ?? run.id, props.pageIndex, verdict.newRect ?? run.rect, fields);
         props.seedPreview(editsSignature([...props.others, committed]), preview);
@@ -201,12 +205,13 @@ export function SourceTextEditor(props: SourceTextEditorProps) {
     if (pending.current) return pending.current;
     const text = normaliseTyped(draft);
     const style = normaliseStyle(run, draftStyle);
-    if (isNoOpEdit(run, text, style)) {
+    const move = textMove(text, existing?.move);
+    if (isNoOpEdit(run, text, style, move)) {
       if (existing) props.onRevert(existing.id);
       close({ focusRun: opts.focusRun, announce: existing ? UI.announce.restored : null });
       return true;
     }
-    if (blockingVerdict(run, fonts, text, style)) {
+    if (blockingVerdict(run, fonts, text, style, move)) {
       block(opts.blockedNotice);
       return false;
     }
@@ -280,24 +285,29 @@ export function SourceTextEditor(props: SourceTextEditorProps) {
   };
 
   // Geometry: the run's box on screen (upright as displayed, §A.5), font sized by its effective size.
+  // A moved line is edited where it is now, not where the source had it.
   const mapping = makeMapping(layout.geometry, layout.cssWidth, layout.cssHeight);
   const pxPerPt = layout.cssHeight / Math.max(displayedSize(layout.geometry).h, 1);
-  const box = pdfRectToViewport(run.rect, mapping);
+  const move = normaliseMove(existing?.move);
+  const origin = { x: run.origin.x + (move?.x ?? 0), y: run.origin.y + (move?.y ?? 0) };
+  const alongMove = move ? move.x * run.dir.x + move.y * run.dir.y : 0;
+  const box = pdfRectToViewport(existing?.rect ?? run.rect, mapping);
   const font = chipFont(run, fonts, draftStyle, pxPerPt);
   const fontPx = Number(font.css.fontSize);
   const delta = estimateDeltaPt(run, fonts, draft, draftStyle);
   const endPt = metrics.originalWidth + delta;
+  const limit = metrics.visibleExtent - alongMove;
   const left = box.x - CHIP_PAD_PX;
   const height = Math.max(box.h, fontPx * LINE_HEIGHT) + 2 * CHIP_PAD_PX;
   const top = box.y + box.h / 2 - height / 2;
   const width = Math.max(Math.max(metrics.originalWidth, endPt) * pxPerPt, measured.textPx + 2) + 2 * CHIP_PAD_PX;
-  const along = (d: number) => pdfToViewport({ x: run.origin.x + run.dir.x * d, y: run.origin.y + run.dir.y * d }, mapping).x - left;
+  const along = (d: number) => pdfToViewport({ x: origin.x + run.dir.x * d, y: origin.y + run.dir.y * d }, mapping).x - left;
   const nearTop = Math.min(top, measured.above) < EDGE_ROOM_PX;
   const nearBottom = Math.min(layout.cssHeight - top - height, measured.below) < EDGE_ROOM_PX;
 
   // Message row, one line, highest priority first (§D.6.1).
   const text = normaliseTyped(draft);
-  const blocked = blockingVerdict(run, fonts, text, draftStyle);
+  const blocked = blockingVerdict(run, fonts, text, draftStyle, move);
   const serverMsg = server && server.key === styleKey(text, normaliseStyle(run, draftStyle)) ? server.message : null;
   let tone: "danger" | "warning" | "neutral" = "neutral";
   let message: string;
@@ -365,13 +375,13 @@ export function SourceTextEditor(props: SourceTextEditorProps) {
         <span ref={mirrorRef} className="st-chip__mirror" style={font.css} aria-hidden="true">
           {draft}
         </span>
-        <svg className="st-guides" width={Math.max(width, along(metrics.visibleExtent) + 2)} height={height} aria-hidden="true">
+        <svg className="st-guides" width={Math.max(width, along(limit) + 2)} height={height} aria-hidden="true">
           <line className="st-guide st-guide--end" x1={along(endPt)} x2={along(endPt)} y1={0} y2={height} />
           {endPt < metrics.originalWidth - 0.01 && (
             <line className="st-guide st-guide--old" x1={along(metrics.originalWidth)} x2={along(metrics.originalWidth)} y1={0} y2={height} />
           )}
-          {metrics.visibleExtent - endPt <= LIMIT_GUIDE_PT && (
-            <line className="st-guide st-guide--limit" x1={along(metrics.visibleExtent)} x2={along(metrics.visibleExtent)} y1={0} y2={height} />
+          {limit - endPt <= LIMIT_GUIDE_PT && (
+            <line className="st-guide st-guide--limit" x1={along(limit)} x2={along(limit)} y1={0} y2={height} />
           )}
         </svg>
       </div>

@@ -205,6 +205,7 @@ fn plan_19_conflicts_stale_refused_and_bad_style() {
         original_text: refused.text.clone(),
         text: "Other".into(),
         style: style(),
+        move_by: None,
     };
     let out = plan(&c, &m, &[e]);
     let p = out.verdicts[0].problem.as_ref().expect("refused");
