@@ -27,14 +27,15 @@ pub(crate) fn check_job_id(job_id: &str) -> Result<(), AppError> {
 
 /// Cancel a running job by id. Killing the child (if any) is handled by the
 /// `JobHandle`; the worker thread reaps it and returns `AppError::cancelled`.
+/// If the async command has not registered the job yet, the request is kept
+/// and applied by `JobRegistry::register`.
 #[tauri::command]
 pub async fn cancel_job(
     registry: tauri::State<'_, JobRegistry>,
     job_id: String,
 ) -> Result<(), AppError> {
-    if let Some(h) = registry.get(&job_id) {
-        h.cancel();
-    }
+    check_job_id(&job_id)?;
+    registry.cancel(&job_id);
     Ok(())
 }
 

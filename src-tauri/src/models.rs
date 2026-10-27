@@ -4,7 +4,7 @@
 //! `src/lib/types.ts` map 1:1 without any manual conversion.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::process::Child;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -131,6 +131,16 @@ pub struct PagePick {
     pub page: u32,
 }
 
+/// Bounded per-page text returned to the private assistant. `truncated` means
+/// the native extractor hit its byte cap, so later pages (or the tail of the
+/// last page) may be missing. The assistant never indexes more than this.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssistantText {
+    pub pages: Vec<String>,
+    pub truncated: bool,
+}
+
 /// A rendered page preview: page number + a base64 PNG data URL. Only tiny
 /// thumbnails cross IPC this way — never the source PDF bytes.
 #[derive(Debug, Clone, Serialize)]
@@ -210,37 +220,89 @@ impl JobHandle {
     }
 }
 
+/// Maximum number of cancellation requests remembered for jobs that have not
+/// reached `register` yet. Bounded so a caller cannot grow this set without
+/// limit; normal job ids are UUIDs and are never reused.
+const MAX_PENDING_CANCELS: usize = 1024;
+
+#[derive(Default)]
+struct JobRegistryState {
+    jobs: HashMap<String, Arc<JobHandle>>,
+    pending_cancels: HashSet<String>,
+}
+
 /// Maps `job_id -> JobHandle`. Managed by Tauri via `app.manage(...)`.
+///
+/// `cancel_job` can race the async command that registers the job. A cancel
+/// that arrives first is remembered in `pending_cancels`; `register` consumes
+/// it and returns an already-cancelled handle.
 #[derive(Default)]
 pub struct JobRegistry {
-    pub jobs: Mutex<HashMap<String, Arc<JobHandle>>>,
+    state: Mutex<JobRegistryState>,
 }
 
 impl JobRegistry {
-    /// Register a job slot and return its shared handle.
+    /// Register a job slot and return its shared handle. If cancellation arrived
+    /// before registration, the returned handle is already cancelled.
     pub fn register(&self, job_id: &str) -> Arc<JobHandle> {
         let handle = JobHandle::new();
-        self.jobs
-            .lock()
-            .expect("job registry poisoned")
-            .insert(job_id.to_string(), handle.clone());
+        let mut state = self.state.lock().expect("job registry poisoned");
+        if state.pending_cancels.remove(job_id) {
+            handle.cancel();
+        }
+        state.jobs.insert(job_id.to_string(), handle.clone());
         handle
     }
 
     /// Remove a job slot once it has finished (success, failure or cancel).
     pub fn remove(&self, job_id: &str) {
-        self.jobs
+        self.state
             .lock()
             .expect("job registry poisoned")
+            .jobs
             .remove(job_id);
     }
 
-    /// Look up a job's handle (used by `cancel_job`).
-    pub fn get(&self, job_id: &str) -> Option<Arc<JobHandle>> {
-        self.jobs
-            .lock()
-            .expect("job registry poisoned")
-            .get(job_id)
-            .cloned()
+    /// Cancel a running job, or remember the request until it registers.
+    pub fn cancel(&self, job_id: &str) {
+        let mut state = self.state.lock().expect("job registry poisoned");
+        if let Some(handle) = state.jobs.get(job_id) {
+            handle.cancel();
+            return;
+        }
+        if state.pending_cancels.len() < MAX_PENDING_CANCELS {
+            state.pending_cancels.insert(job_id.to_string());
+        }
+    }
+}
+
+#[cfg(test)]
+mod job_registry_tests {
+    use super::{JobRegistry, MAX_PENDING_CANCELS};
+
+    #[test]
+    fn cancellation_before_registration_is_applied() {
+        let registry = JobRegistry::default();
+        registry.cancel("early-job");
+        let handle = registry.register("early-job");
+        assert!(handle.is_cancelled());
+    }
+
+    #[test]
+    fn cancellation_after_registration_marks_the_handle() {
+        let registry = JobRegistry::default();
+        let handle = registry.register("running-job");
+        registry.cancel("running-job");
+        assert!(handle.is_cancelled());
+    }
+
+    #[test]
+    fn pending_cancellations_are_bounded() {
+        let registry = JobRegistry::default();
+        for index in 0..=MAX_PENDING_CANCELS {
+            registry.cancel(&format!("job-{index}"));
+        }
+        let state = registry.state.lock().expect("job registry poisoned");
+        assert_eq!(state.pending_cancels.len(), MAX_PENDING_CANCELS);
     }
 }
