@@ -271,13 +271,14 @@ export function AssistantSessionView({
     available: ocrAvailable,
     language: ocrLanguage,
   });
+  const stale = isSessionStale(files, session.sources);
   const canAsk = canRunAssistant(
     session.phase,
     model.ready,
     session.chunks.length,
+    stale,
   );
   const summary = ingestionSummary(session.stats);
-  const stale = isSessionStale(files, session.sources);
   const historyRef = useRef<HTMLDivElement>(null);
 
   // Move focus to the result region when a turn arrives, including for screen
@@ -468,9 +469,11 @@ export function AssistantSessionView({
               <span className="field__hint">
                 {canAsk
                   ? "Ctrl+Enter asks without leaving the keyboard."
-                  : model.ready
-                    ? "Process at least one document first."
-                    : "The assistant is optional and needs a local model."}
+                  : stale
+                    ? "Process the changed workspace again to refresh this session."
+                    : model.ready
+                      ? "Process at least one document first."
+                      : "The assistant is optional and needs a local model."}
               </span>
               <div className="row gap-sm">
                 <Button

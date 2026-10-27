@@ -12,6 +12,7 @@ import {
   hasSessionData,
   INITIAL_ASSISTANT_SESSION,
   isAbortError,
+  isSessionStale,
   runGroundedAnswer,
   runGroundedSummary,
 } from "@/lib/assistant/session";
@@ -57,6 +58,7 @@ export function useAssistantSession({
   const turnSeqRef = useRef(0);
   const chunksRef = useRef(state.chunks);
   chunksRef.current = state.chunks;
+  const stale = isSessionStale(files, state.sources);
 
   const nextTurnId = useCallback(() => {
     turnSeqRef.current += 1;
@@ -157,6 +159,14 @@ export function useAssistantSession({
     async (query: string) => {
       if (model.status.state !== "ready") return;
       if (state.phase !== "idle") return;
+      if (stale) {
+        dispatch({
+          type: "fail",
+          message:
+            "The workspace changed. Process the documents again before asking a question.",
+        });
+        return;
+      }
       if (chunksRef.current.length === 0) {
         dispatch({
           type: "fail",
@@ -195,12 +205,20 @@ export function useAssistantSession({
         finishRun(runId);
       }
     },
-    [beginRun, finishRun, model, nextTurnId, state.phase],
+    [beginRun, finishRun, model, nextTurnId, stale, state.phase],
   );
 
   const summarize = useCallback(async () => {
     if (model.status.state !== "ready") return;
     if (state.phase !== "idle") return;
+    if (stale) {
+      dispatch({
+        type: "fail",
+        message:
+          "The workspace changed. Process the documents again before requesting a summary.",
+      });
+      return;
+    }
     if (chunksRef.current.length === 0) {
       dispatch({
         type: "fail",
@@ -230,7 +248,7 @@ export function useAssistantSession({
     } finally {
       finishRun(runId);
     }
-  }, [beginRun, finishRun, model, nextTurnId, state.phase]);
+  }, [beginRun, finishRun, model, nextTurnId, stale, state.phase]);
 
   const cancel = useCallback(() => {
     runIdRef.current += 1;

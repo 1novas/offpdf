@@ -246,6 +246,29 @@ describe("AssistantSessionView", () => {
     expect(markup).toContain("Process again");
   });
 
+  it("disables Ask and Summarize after a processed PDF is removed", () => {
+    const markup = renderView({
+      files: [],
+      session: session({
+        sources: SOURCES,
+        chunks: [
+          {
+            id: "c1",
+            sourceId: "f1",
+            sourceName: "report.pdf",
+            page: 1,
+            text: "Revenue was 4.2 million euros.",
+          },
+        ],
+      }),
+    });
+
+    expect(markup).toContain("Workspace changed");
+    expect(buttonMarkup(markup, "Ask")).toContain("disabled");
+    expect(buttonMarkup(markup, "Summarize")).toContain("disabled");
+    expect(markup).toContain("Process again to refresh extracted text");
+  });
+
   it("shows an unavailable OCR state only after OCR is requested", () => {
     const markup = renderView({
       files: FILES,
