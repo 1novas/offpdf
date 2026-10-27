@@ -148,8 +148,9 @@ export function canRunAssistant(
   phase: AssistantPhase,
   modelReady: boolean,
   chunkCount: number,
+  stale = false,
 ): boolean {
-  return phase === "idle" && modelReady && chunkCount > 0;
+  return !stale && phase === "idle" && modelReady && chunkCount > 0;
 }
 
 export function canProcessDocuments(

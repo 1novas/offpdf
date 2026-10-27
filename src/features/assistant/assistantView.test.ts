@@ -129,6 +129,7 @@ describe("assistant action availability", () => {
     expect(canRunAssistant("processing", true, 1)).toBe(false);
     expect(canRunAssistant("idle", false, 1)).toBe(false);
     expect(canRunAssistant("idle", true, 0)).toBe(false);
+    expect(canRunAssistant("idle", true, 1, true)).toBe(false);
   });
 
   it("requires a valid OCR choice when OCR is enabled", () => {
