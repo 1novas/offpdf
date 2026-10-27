@@ -155,8 +155,9 @@ context before generating the summary.
 ## Opening a cited page
 
 `Citation` contains `sourceId` and `page`, but no filesystem path. The session UI
-resolves `sourceId` against its in-memory workspace, then passes the resulting
-`PageRef` to the existing viewer.
+resolves `sourceId` against its in-memory workspace, then opens the existing
+`PageLightbox` at that page. See [assistant-sessions.md](assistant-sessions.md)
+for the optional model gate, clear/cancel lifecycle and keyboard behavior.
 
 ```ts
 import { citationTarget } from "@/lib/assistant/citations";
