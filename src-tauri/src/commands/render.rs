@@ -217,7 +217,7 @@ pub async fn ocr_pdf(
     let app2 = app.clone();
     let jid = job_id.clone();
     let res = tauri::async_runtime::spawn_blocking(move || {
-        ocr::ocr(&app2, &handle, &jid, &picks, &output_path, &lang)
+        ocr::ocr(&app2, &handle, &jid, &picks, &output_path, &lang, None)
     })
     .await
     .map_err(|e| AppError::engine_failed(format!("worker join error: {e}")))?;

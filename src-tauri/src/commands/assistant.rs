@@ -116,7 +116,15 @@ pub async fn assistant_ocr_text(
             .collect();
 
         let text = (|| -> Result<AssistantText, AppError> {
-            ocr::ocr(&app2, &handle, &jid, &picks, &output_str, &lang)?;
+            ocr::ocr(
+                &app2,
+                &handle,
+                &jid,
+                &picks,
+                &output_str,
+                &lang,
+                Some(ocr::OcrTempBudget::ASSISTANT),
+            )?;
             let (pages, truncated) =
                 render::page_texts_bounded(&app2, &output_str, MAX_ASSISTANT_TEXT_BYTES)?;
             Ok(AssistantText { pages, truncated })

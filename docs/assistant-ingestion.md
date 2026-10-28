@@ -75,6 +75,14 @@ extracts its per-page text, and always removes that PDF before returning. The
 temporary file is also removed when OCR fails or the job is cancelled. The
 per-page work directory used by the OCR engine is removed as well.
 
+Assistant OCR passes an explicit temporary-work budget to the shared OCR
+engine: 256 MiB for retained per-page searchable PDFs plus the page currently
+being processed, and 64 MiB for one rendered image or page PDF. These are
+post-process limits: `pdftoppm` or Tesseract can temporarily write a larger
+file before the engine checks its size, removes the temporary page files, and
+returns `OCR_TEMP_LIMIT`. The standard OCR tool does not pass this budget, so
+its previous behavior is unchanged.
+
 ## Chunking and page identity
 
 Each page is chunked independently, so a chunk never spans two pages. Chunks

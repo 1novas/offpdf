@@ -17,15 +17,31 @@ use tauri::Manager;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
-/// Upper bound on the retained per-page searchable PDFs for one OCR pass. The
-/// PNG for the page currently being processed is removed before the next page,
-/// so the peak work-directory size is this budget plus one page image.
-const MAX_OCR_WORK_BYTES: u64 = 256 * 1024 * 1024;
+/// Explicit temporary-work budget for one OCR pass. The assistant passes
+/// `Some(OcrTempBudget::ASSISTANT)`; the standard OCR tool passes `None` and
+/// keeps its previous behavior.
+///
+/// These are post-process limits: the external renderer or Tesseract can
+/// temporarily write a larger file before the check runs. The engine removes
+/// the page files when a limit is exceeded, but it does not cap the peak size
+/// while a child process is writing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OcrTempBudget {
+    /// Upper bound on the retained per-page searchable PDFs plus the page
+    /// currently being processed (its image and its page PDF).
+    pub work_bytes: u64,
+    /// Upper bound on one rendered image or one per-page searchable PDF.
+    pub page_bytes: u64,
+}
 
-/// Upper bound on one rendered image or one per-page searchable PDF. This
-/// prevents a single pathological page from filling the work directory before
-/// the aggregate budget can be checked.
-const MAX_OCR_PAGE_BYTES: u64 = 64 * 1024 * 1024;
+impl OcrTempBudget {
+    /// Assistant ingestion's explicit budget: 256 MiB for retained per-page
+    /// PDFs plus the current page, and 64 MiB per rendered image or page PDF.
+    pub const ASSISTANT: OcrTempBudget = OcrTempBudget {
+        work_bytes: 256 * 1024 * 1024,
+        page_bytes: 64 * 1024 * 1024,
+    };
+}
 
 fn file_bytes(path: &Path) -> u64 {
     std::fs::metadata(path).map(|meta| meta.len()).unwrap_or(0)
@@ -35,15 +51,47 @@ fn budget_exceeded(used: u64, added: u64, limit: u64) -> bool {
     used.saturating_add(added) > limit
 }
 
-fn temp_limit_error() -> AppError {
+/// Check one page against `budget`, removing its temporary files on failure.
+/// `page_pdf` is `None` after rendering and `Some` after Tesseract; the return
+/// value is the retained per-page PDF bytes for the next page.
+fn check_page_budget(
+    budget: Option<OcrTempBudget>,
+    retained_bytes: u64,
+    png: &Path,
+    page_pdf: Option<&Path>,
+) -> Result<u64, AppError> {
+    let Some(budget) = budget else {
+        return Ok(retained_bytes.saturating_add(page_pdf.map(file_bytes).unwrap_or(0)));
+    };
+    let png_bytes = file_bytes(png);
+    let page_bytes = page_pdf.map(file_bytes).unwrap_or(0);
+    if png_bytes > budget.page_bytes
+        || page_bytes > budget.page_bytes
+        || budget_exceeded(
+            retained_bytes,
+            png_bytes.saturating_add(page_bytes),
+            budget.work_bytes,
+        )
+    {
+        let _ = std::fs::remove_file(png);
+        if let Some(page_pdf) = page_pdf {
+            let _ = std::fs::remove_file(page_pdf);
+        }
+        return Err(temp_limit_error(budget));
+    }
+    Ok(retained_bytes.saturating_add(page_bytes))
+}
+
+fn temp_limit_error(budget: OcrTempBudget) -> AppError {
     AppError::new(
         "OCR_TEMP_LIMIT",
         "OCR needs too much temporary space",
         "This document is too large to OCR safely in one pass.",
     )
     .with_details(format!(
-        "OCR temporary data is limited to {} MiB per pass.",
-        MAX_OCR_WORK_BYTES / (1024 * 1024)
+        "OCR temporary data is limited to {} MiB per pass and {} MiB per page.",
+        budget.work_bytes / (1024 * 1024),
+        budget.page_bytes / (1024 * 1024)
     ))
     .with_suggestion("Select fewer pages, or split the document before using OCR.")
 }
@@ -213,7 +261,9 @@ pub fn list_langs(app: &tauri::AppHandle) -> Result<Vec<String>, AppError> {
 }
 
 /// OCR every page of the combined document into one searchable PDF. `lang` is a
-/// Tesseract language code (e.g. "eng", "tur", or "eng+tur").
+/// Tesseract language code (e.g. "eng", "tur", or "eng+tur"). `budget` is
+/// `Some` for assistant ingestion; `None` keeps the standard OCR tool's prior
+/// behavior.
 pub fn ocr(
     app: &tauri::AppHandle,
     handle: &Arc<JobHandle>,
@@ -221,6 +271,7 @@ pub fn ocr(
     picks: &[PagePick],
     output: &str,
     lang: &str,
+    budget: Option<OcrTempBudget>,
 ) -> Result<Vec<String>, AppError> {
     if picks.is_empty() {
         return Err(AppError::new("NO_PAGES", "No pages", "Add a PDF first."));
@@ -285,13 +336,7 @@ pub fn ocr(
             if !png.exists() {
                 return Err(AppError::engine_failed(rerr.trim().to_string()));
             }
-            let png_bytes = file_bytes(&png);
-            if png_bytes > MAX_OCR_PAGE_BYTES
-                || budget_exceeded(retained_bytes, png_bytes, MAX_OCR_WORK_BYTES)
-            {
-                let _ = std::fs::remove_file(&png);
-                return Err(temp_limit_error());
-            }
+            check_page_budget(budget, retained_bytes, &png, None)?;
 
             // 2. tesseract PNG → searchable one-page PDF
             let out_base = work.join(format!("o{i}"));
@@ -315,19 +360,7 @@ pub fn ocr(
             if !page_pdf.exists() {
                 return Err(AppError::engine_failed(terr.trim().to_string()));
             }
-            let page_bytes = file_bytes(&page_pdf);
-            if page_bytes > MAX_OCR_PAGE_BYTES
-                || budget_exceeded(
-                    retained_bytes,
-                    png_bytes.saturating_add(page_bytes),
-                    MAX_OCR_WORK_BYTES,
-                )
-            {
-                let _ = std::fs::remove_file(&png);
-                let _ = std::fs::remove_file(&page_pdf);
-                return Err(temp_limit_error());
-            }
-            retained_bytes = retained_bytes.saturating_add(page_bytes);
+            retained_bytes = check_page_budget(budget, retained_bytes, &png, Some(&page_pdf))?;
             page_pdfs.push(page_pdf.to_string_lossy().to_string());
             let _ = std::fs::remove_file(&png);
         }
@@ -354,17 +387,91 @@ pub fn ocr(
 
 #[cfg(test)]
 mod temp_budget_tests {
-    use super::{budget_exceeded, MAX_OCR_PAGE_BYTES, MAX_OCR_WORK_BYTES};
+    use super::{budget_exceeded, check_page_budget, OcrTempBudget};
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    fn test_dir(name: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("offpdf-ocr-budget-{}-{name}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("test temp dir");
+        dir
+    }
+
+    fn write_bytes(path: &Path, len: usize) {
+        fs::write(path, vec![0u8; len]).expect("test file");
+    }
+
+    fn clean(dir: &Path) {
+        let _ = fs::remove_dir_all(dir);
+    }
 
     #[test]
     fn rejects_work_above_the_budget() {
-        assert!(!budget_exceeded(0, MAX_OCR_WORK_BYTES, MAX_OCR_WORK_BYTES));
-        assert!(budget_exceeded(1, MAX_OCR_WORK_BYTES, MAX_OCR_WORK_BYTES));
-        assert!(budget_exceeded(u64::MAX, 1, MAX_OCR_WORK_BYTES));
+        let budget = OcrTempBudget::ASSISTANT;
+        assert!(!budget_exceeded(0, budget.work_bytes, budget.work_bytes));
+        assert!(budget_exceeded(1, budget.work_bytes, budget.work_bytes));
+        assert!(budget_exceeded(u64::MAX, 1, budget.work_bytes));
     }
 
     #[test]
     fn one_page_cannot_exceed_its_own_cap() {
-        assert!(MAX_OCR_PAGE_BYTES <= MAX_OCR_WORK_BYTES);
+        let budget = OcrTempBudget::ASSISTANT;
+        assert!(budget.page_bytes <= budget.work_bytes);
+    }
+
+    #[test]
+    fn assistant_budget_rejects_and_removes_page_files() {
+        let dir = test_dir("reject");
+        let png = dir.join("page.png");
+        let page = dir.join("page.pdf");
+        write_bytes(&png, 10);
+        write_bytes(&page, 10);
+
+        let budget = OcrTempBudget {
+            work_bytes: 8,
+            page_bytes: 8,
+        };
+        let err =
+            check_page_budget(Some(budget), 0, &png, Some(&page)).expect_err("over-budget page");
+        assert_eq!(err.code, "OCR_TEMP_LIMIT");
+        assert!(!png.exists(), "rendered image removed");
+        assert!(!page.exists(), "page PDF removed");
+        clean(&dir);
+    }
+
+    #[test]
+    fn assistant_budget_rejects_an_aggregate_overage() {
+        let dir = test_dir("aggregate");
+        let png = dir.join("page.png");
+        let page = dir.join("page.pdf");
+        write_bytes(&png, 5);
+        write_bytes(&page, 6);
+
+        let budget = OcrTempBudget {
+            work_bytes: 10,
+            page_bytes: 10,
+        };
+        let err =
+            check_page_budget(Some(budget), 0, &png, Some(&page)).expect_err("aggregate overage");
+        assert_eq!(err.code, "OCR_TEMP_LIMIT");
+        assert!(!png.exists() && !page.exists());
+        clean(&dir);
+    }
+
+    #[test]
+    fn standard_ocr_keeps_its_previous_unbounded_behavior() {
+        let dir = test_dir("standard");
+        let png = dir.join("page.png");
+        let page = dir.join("page.pdf");
+        write_bytes(&png, 10);
+        write_bytes(&page, 10);
+
+        // Even a tiny budget would reject these files; `None` must ignore it.
+        let retained = check_page_budget(None, 5, &png, Some(&page)).expect("no budget");
+        assert_eq!(retained, 15);
+        assert!(png.exists() && page.exists(), "files are not removed");
+        clean(&dir);
     }
 }
