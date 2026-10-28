@@ -10,6 +10,10 @@ All notable project changes should be documented here.
 - Added deterministic, bounded page-chunk retrieval and strict citation verification for the private local assistant. Answers and summaries can only cite retrieved chunks with quotes found in the source text; evidence-free or unverifiable answers are rejected. Retrieval is Unicode-aware and covered by multilingual fixtures and tests (issue #87).
 - Added bounded, session-only PDF ingestion for the private local assistant. Native text is preferred, OCR is explicit and cancellable, page boundaries and source metadata are preserved through chunking, and temporary OCR files are always removed. Encrypted, empty, scanned, mixed and malformed documents produce structured issues instead of being silently indexed, and a containing folder is never scanned (issue #86).
 
+### Fixed
+
+- Scoped the assistant OCR temporary-work budget to assistant jobs; the standard OCR tool keeps its previous behavior, and the documented limit is now explicitly post-process (issue #150).
+
 ## 0.5.0 - 2026-10-25
 
 ### Added
