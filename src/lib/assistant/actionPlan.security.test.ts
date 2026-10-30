@@ -2,12 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const tauriCore = vi.hoisted(() => ({
   invoke: vi.fn(),
+}));
+const tauriEvent = vi.hoisted(() => ({
   listen: vi.fn(),
 }));
 
-// Any Tauri command ultimately goes through this module. The assistant parser
-// must stay a pure validation boundary: a rejected plan has no executable path.
+// Backend commands use core.invoke and event subscriptions use event.listen.
+// Parsing an assistant plan must remain a pure validation boundary.
 vi.mock("@tauri-apps/api/core", () => tauriCore);
+vi.mock("@tauri-apps/api/event", () => tauriEvent);
 
 import {
   ACTION_PLAN_LIMITS,
@@ -56,7 +59,7 @@ beforeEach(() => {
 
 afterEach(() => {
   expect(tauriCore.invoke).not.toHaveBeenCalled();
-  expect(tauriCore.listen).not.toHaveBeenCalled();
+  expect(tauriEvent.listen).not.toHaveBeenCalled();
 });
 
 describe("untrusted assistant action plans", () => {
